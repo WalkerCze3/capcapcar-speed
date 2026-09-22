@@ -1,0 +1,45 @@
+# Variant of default.yaml for 3D/metric trajectory input — e.g. I24-3D-style
+# annotations where x/y are already real-world coordinates (feet) along and
+# across the road, rather than pixel bbox corners.
+#
+# See features.py module docstring for why this mode is framed as DENOISING
+# a noisy metric signal, not "recovering scale" the way self_normalized /
+# raw are for pixel-space input — that framing matters for how you describe
+# and evaluate this in your writeup.
+
+columns:
+  track_id: track_id
+  frame: frame          # sort key within a track — if you only have a timestamp,
+                         # map this to the SAME source column as `timestamp` below
+  timestamp: timestamp   # float seconds, used to compute dt between frames
+  x: x                   # real-world position along the road (e.g. feet)
+  y: y                   # real-world position across the road (e.g. feet)
+  length: length         # vehicle length, real-world units
+  width: width            # vehicle width, real-world units
+  direction: direction    # heading; whatever convention your dataset uses (e.g. +1/-1, or degrees)
+  speed: speed             # ground-truth speed, only needed for train.py
+
+labels:
+  source: column
+  path: null
+
+features:
+  mode: metric_3d
+  max_seq_len: 60
+
+model:
+  hidden_size: 64
+  num_layers: 1
+  bidirectional: false
+  dropout: 0.1
+  rnn_type: gru
+
+train:
+  epochs: 50
+  batch_size: 32
+  lr: 0.001
+  val_frac: 0.15
+  test_frac: 0.15
+  seed: 42
+  early_stop_patience: 8
+  out_dir: runs/metric_3d

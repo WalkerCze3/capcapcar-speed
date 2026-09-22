@@ -1,0 +1,47 @@
+# Everything schema- or hyperparameter-related lives here so you can point
+# this at VS13, I-24, or your own extracted trajectories without touching code.
+
+columns:
+  # Map YOUR csv's column names (right side) to the names this code expects
+  # (left side). Edit the right-hand values to match your actual CSV header.
+  track_id: track_id
+  frame: frame          # any monotonically increasing per-track index (frame number or timestamp)
+  x: x                  # bbox top-left x (pixels)
+  y: y                  # bbox top-left y (pixels)
+  w: w                  # bbox width (pixels)
+  h: h                  # bbox height (pixels)
+  speed: speed          # ground-truth speed (same unit throughout, e.g. km/h). Only needed for train.py.
+
+labels:
+  # Most trajectory datasets (VS13, I-24-style exports) repeat one constant
+  # speed value across every row of a track. If instead your speed labels
+  # live in a SEPARATE csv keyed by track_id, set source: "file" and point
+  # `path` at it (expects columns: track_id, speed).
+  source: column        # "column" | "file"
+  path: null             # only used when source: file
+
+features:
+  # self_normalized: Δposition / bbox size, Δsize / size — the invariant
+  #   feature design discussed for this project; more robust to camera
+  #   distance/perspective than raw pixel deltas.
+  # raw: plain per-frame pixel differences (matches the original paper's
+  #   feature choice, kept here for an apples-to-apples comparison if you want it).
+  mode: self_normalized     # "self_normalized" | "raw"
+  max_seq_len: 60            # tracks longer than this are truncated; shorter ones are zero-padded + masked
+
+model:
+  hidden_size: 64
+  num_layers: 1
+  bidirectional: false
+  dropout: 0.1
+  rnn_type: gru               # "gru" | "lstm"
+
+train:
+  epochs: 50
+  batch_size: 32
+  lr: 0.001
+  val_frac: 0.15
+  test_frac: 0.15
+  seed: 42
+  early_stop_patience: 8
+  out_dir: runs/default
