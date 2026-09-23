@@ -62,8 +62,8 @@ def test_vehicle_and_camera_isolation(tmp_path):
 
 
 def test_horizon_crossing_rejected():
-    # X's w-column coefficient is -1, so w = 50 - X: positive for small X, negative for large X.
-    P = np.array([[1, 0, -1], [0, 1, 0], [0, 0, 0], [0, 0, 50]], dtype=np.float64)
+    # w row is [-1, 0, 0, 50] -> w = 50 - X: positive for small X, negative for large X.
+    P = np.array([[1, 0, 0, 0], [0, 1, 0, 0], [-1, 0, 0, 50]], dtype=np.float64)
     near_center = np.array([1.0, 1.0, 1.0])
     near_dims = np.array([4.0, 2.0, 1.5])
     far_center = np.array([200.0, 1.0, 1.0])  # X=200 -> w = 50-200 < 0 for corners near this X

@@ -103,14 +103,14 @@ def cuboid_corners(center: np.ndarray, dims: np.ndarray) -> np.ndarray:
 def project_points(points_xyz: np.ndarray, P: np.ndarray) -> np.ndarray | None:
     """
     points_xyz: (N, 3) world points, meters.
-    P: (4, 3) space->image projection matrix, row-vector convention:
-       image_homog = [X, Y, Z, 1] @ P.
+    P: (3, 4) space->image projection matrix, standard column-vector
+       convention: image_homog = P @ [X, Y, Z, 1]^T.
     Returns (N, 2) image-plane points, or None if any point is at/behind the
     camera (homogeneous w <= epsilon) — i.e. crosses the horizon.
     """
     n = points_xyz.shape[0]
     homog = np.concatenate([points_xyz, np.ones((n, 1))], axis=1)  # (N, 4)
-    img_homog = homog @ P  # (N, 3)
+    img_homog = (P @ homog.T).T  # (N, 3)
     w = img_homog[:, 2]
     if np.any(w <= 1e-6):
         return None

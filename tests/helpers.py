@@ -14,7 +14,7 @@ FEET_TO_METERS = 0.3048
 # physically meaningful, but numerically well-behaved (never crosses the
 # horizon), which is what most tests want. test_data.py builds its own
 # deliberately horizon-crossing P separately.
-SAFE_P = [[1, 0, 0], [0, 1, 0], [0, 0, 0], [0, 0, 100]]
+SAFE_P = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 100]]
 
 
 def make_scene(data_dir: Path, scene: str, vehicles: list[dict], cameras: list[str] = ("p1c1",),
