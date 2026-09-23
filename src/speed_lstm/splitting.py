@@ -46,6 +46,11 @@ def _bin_histogram(group_windows: list) -> dict[int, int]:
 
 def speed_balanced_split(windows: list, seed: int = 42) -> dict[str, list]:
     """Returns {'train': [Window, ...], 'val': [...], 'test': [...]}."""
+    if not windows:
+        raise ValueError(
+            "speed_balanced_split got 0 windows -- nothing to split. "
+            "Check that the data directory/scenes actually produced valid windows."
+        )
     groups = group_windows_by_vehicle(windows)
     group_keys = list(groups.keys())
     group_hist = {k: _bin_histogram(groups[k]) for k in group_keys}
