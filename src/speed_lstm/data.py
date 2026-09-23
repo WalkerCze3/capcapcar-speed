@@ -168,7 +168,12 @@ def build_windows(tracks: dict, scene: str, hg: dict, need_2d: bool) -> list[Win
     for (camera, vid), g in tracks.items():
         P = None
         if need_2d:
-            cam_hg = hg.get(camera)
+            # hg.json is keyed by direction group first ('EB'/'WB', matching
+            # the annotations' direction column: +1=EB, -1=WB), then by
+            # camera name -- each direction group has its own per-camera
+            # homography/projection, not a single shared one.
+            direction_key = "EB" if int(g["direction"].iloc[0]) == 1 else "WB"
+            cam_hg = hg.get(direction_key, {}).get(camera)
             if cam_hg is None:
                 continue
             P = np.array(cam_hg["P"], dtype=np.float64)

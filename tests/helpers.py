@@ -52,10 +52,13 @@ def make_scene(data_dir: Path, scene: str, vehicles: list[dict], cameras: list[s
         ts_data[cam] = [1_700_000_000.0 + offset + i * fps_dt for i in range(max_frame + 1)]
     pd.DataFrame(ts_data).to_csv(data_dir / "ts" / f"{scene}_ts.csv", index=False)
 
-    hg = {}
+    # Real I-24 hg.json is keyed by direction group first ('EB'/'WB'), then
+    # camera name -- each direction has its own per-camera homography.
+    hg = {"EB": {}, "WB": {}}
     for cam in cameras:
         P = (P_by_camera or {}).get(cam, SAFE_P)
-        hg[cam] = {"P": P}
+        hg["EB"][cam] = {"P": P}
+        hg["WB"][cam] = {"P": P}
     with open(data_dir / "hg" / f"{scene}_hg.json", "w") as f:
         json.dump(hg, f)
 
