@@ -129,9 +129,47 @@ filter regardless of mode, so `2d`/`3d`/`combined` runs on the same `--data-dir`
 `--scenes`, and `--seed` get the *identical* train/val/test split — required for their
 test metrics to be comparable, and checked by `speed_lstm.balanced_report`.
 
+### From raw video: detect → 3D box → v2 model
+
+`speed_lstm/video.py` runs a trained v2 checkpoint directly on a video file:
+
+1. **Detect + track** vehicles with Ultralytics YOLO + ByteTrack (car / motorcycle / bus / truck).
+2. **Lift each 2D box to a 3D cuboid** (`speed_lstm/lift3d.py`) using the camera's 3×4
+   projection matrix: the road-aligned cuboid (flat road, `z = height/2`) whose projected
+   corners best match the detected box. Dimensions are regularized toward a per-class prior,
+   then fixed to each track's median so only position varies frame to frame. Boxes clipped by
+   the image edge are dropped. For an I-24 `hg.json`, each track's direction (EB/WB P matrix)
+   is picked from its motion.
+3. **Window + predict**: 16 consecutive frames per window (stride 8, split at tracking gaps),
+   passed to `Predictor.predict(timestamps, boxes2d, boxes3d)` in the same format as training:
+   `boxes3d = [cx, cy, cz, length, width, height]` in metres, `boxes2d` = the projected
+   cuboid's xyxy box.
+
+```bash
+pip install -r requirements-video.txt   # adds ultralytics + opencv
+python scripts/video_speed_cli.py --video p1c1.mp4 --checkpoint runs/v2/3d/best.pt \
+    --calib /path/to/i24_dataset/hg/scene1_hg.json --camera p1c1 --render
+```
+
+Timestamps default to `frame / fps`; pass `--ts-csv data/ts/scene1_ts.csv` (with `--camera`) to
+use I-24's corrected per-camera timestamps. `--calib` also accepts a single-camera
+`{"P": [[...],[...],[...]]}` json; `--calib-units` says which world units P expects (`ft`
+by default, since I-24 calibrations are in feet).
+
+Outputs in `runs/video/<video name>/`: `detections.csv`, `boxes3d.csv` (per-frame 3D boxes +
+reprojection error), `windows.json` (the exact model inputs, same format `predict_v2_cli.py`
+reads), `window_predictions.csv`, `track_speeds.csv` (median per vehicle), and
+`annotated.mp4` with `--render`. `geometric_mps` in the outputs is path length / time over
+the same 3D centers (the training target's formula) — a useful sanity check against the model.
+
+Caveat: the model was trained on annotation-derived cuboids, and these are monocular fits
+from detector boxes. The metric scale comes entirely from the calibration, so a wrong P (or
+wrong `--calib-units`) scales every speed.
+
 ## What's NOT in this scaffold (on purpose)
 
-- No detection/tracking — this assumes trajectory CSVs already exist
+- No detection/tracking for the v1 `speedmodel/` path — it assumes trajectory CSVs already
+  exist (the v2 path has `video_speed_cli.py`, above)
 - No Google Drive sync or checkpoint-across-sessions — training is a single
   run of at most a few minutes on this kind of data, not hours of video
   inference, so if Colab disconnects you just re-run `train_cli.py`
