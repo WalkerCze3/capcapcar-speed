@@ -90,10 +90,13 @@ def main() -> None:
               f"geometry {per_rec[r]['geometry_median'].get('mae', float('nan')):.2f}, "
               f"reference {per_rec[r]['reference_median_mae'] or float('nan'):.2f}  [{len(cars)} cars]")
     all_cars = pd.concat(rows) if rows else pd.DataFrame()
+    if len(all_cars):  # model and geometry err for different reasons; their mean is a cheap combination to track
+        all_cars["hybrid_kmh"] = all_cars[["model_kmh", "median_kmh"]].mean(axis=1, skipna=False)
     all_cars.to_csv(out_dir / "test_cars.csv", index=False)
     result.update(test_recordings=test_recs, per_recording=per_rec,
                   test_model=ft.error_summary(all_cars) if len(all_cars) else {"n": 0},
                   test_geometry_median=ft.error_summary(all_cars, "median_kmh") if len(all_cars) else {"n": 0},
+                  test_hybrid=ft.error_summary(all_cars, "hybrid_kmh") if len(all_cars) else {"n": 0},
                   checkpoint=str(ckpt))
     (out_dir / "results.json").write_text(json.dumps(result, indent=2, default=float))
 
@@ -109,7 +112,7 @@ def main() -> None:
         "time": result["time"], "id": out_dir.name, "name": cfg.get("name"),
         "test_mae": tm.get("mae"), "test_median": tm.get("median"), "test_bias": tm.get("bias"),
         "test_cars": tm.get("n"), "test_recordings": len(test_recs),
-        "geometry_mae": result["test_geometry_median"].get("mae"),
+        "geometry_mae": result["test_geometry_median"].get("mae"), "hybrid_mae": result["test_hybrid"].get("mae"),
         "val_mae": result.get("val_best", {}).get("mae"), "best_epoch": result.get("val_best", {}).get("epoch"),
         "train_recordings": len(result.get("train_recordings", [])), "train_windows": result.get("n_train_windows"),
         **{f"ft_{k}": fcfg.get(k) for k in ("epochs", "lr", "weight_decay", "freeze", "renorm", "loss", "scratch", "seed")},
