@@ -110,3 +110,14 @@ def test_finetune_runs_and_selects_by_val(tmp_path):
     res = finetune(tmp_path / "init.pt", train, val, tmp_path / "out", epochs=15, lr=3e-3, renorm="all", log=lambda *_: None)
     assert (tmp_path / "out" / "best.pt").exists()
     assert res["best"]["mae"] <= res["history"][0]["mae"]
+
+
+def test_experiment_accepts_long_inline_config(tmp_path):
+    import json, subprocess, sys
+    from pathlib import Path
+    cfg = {"name": "x" * 400, "test": [], "finetune": None}
+    (tmp_path / "runs/v2/3d").mkdir(parents=True)
+    r = subprocess.run([sys.executable, str(Path(__file__).parent.parent / "scripts/brno_experiment.py"),
+                        "--config", json.dumps(cfg), "--project", str(tmp_path), "--out-dir", str(tmp_path / "out")],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr

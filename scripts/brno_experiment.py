@@ -39,7 +39,8 @@ def main() -> None:
     p.add_argument("--out-dir", required=True)
     args = p.parse_args()
 
-    cfg = json.loads(Path(args.config).read_text()) if Path(args.config).exists() else json.loads(args.config)
+    # Inline json, or a path to a json file (a long json string would overflow a path check).
+    cfg = json.loads(args.config) if args.config.lstrip().startswith("{") else json.loads(Path(args.config).read_text())
     project = Path(args.project)
     runs_root = project / cfg.get("runs_root", "runs/brno")
     out_dir = Path(args.out_dir)
