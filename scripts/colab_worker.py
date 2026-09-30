@@ -66,8 +66,19 @@ def job_cmds(job: dict, args) -> list[list[str]]:
         if job.get("reuse_detections", True) and cached.exists():
             shutil.copy(cached, "/content/detections_cache.csv")
             cmd += ["--detections", "/content/detections_cache.csv"]
+        else:
+            # Reading a multi-GB AVI straight off the Drive mount can time out in OpenCV; copy it first.
+            cache = Path("/content/video_cache") / f"{rec}.avi"
+            cmd += ["--video", str(cache)]
         cmd += job.get("extra_args", [])
-        return [cmd, [py, "-c", f"import shutil; shutil.copytree({str(local)!r}, {str(drive_dir)!r}, dirs_exist_ok=True)"]]
+        steps = [cmd, [py, "-c", f"import shutil; shutil.copytree({str(local)!r}, {str(drive_dir)!r}, dirs_exist_ok=True)"]]
+        if "--video" in cmd:
+            copy = [py, "-c", "import shutil, pathlib, sys; pathlib.Path(sys.argv[2]).parent.mkdir(parents=True, exist_ok=True); "
+                              "shutil.copy(sys.argv[1], sys.argv[2]); print('[worker] copied video to', sys.argv[2])",
+                    f"{args.brno}/dataset/{rec}/video.avi", str(cache)]
+            clean = [py, "-c", "import os, sys; os.remove(sys.argv[1])", str(cache)]
+            steps = [copy, steps[0], clean, steps[1]]
+        return steps
     if job["type"] == "experiment":
         out = Path(args.project) / "runs/experiments" / job["id"]
         return [[py, "scripts/brno_experiment.py", "--config", json.dumps(job["config"]),

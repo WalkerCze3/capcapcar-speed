@@ -158,10 +158,206 @@
   "max_seconds": 600
  },
  {
+  "id": "prep_session3_center_r2",
+  "type": "prepare",
+  "recording": "session3_center",
+  "max_seconds": 600
+ },
+ {
   "id": "prep_session6_center",
   "type": "prepare",
   "recording": "session6_center",
   "max_seconds": 600
+ },
+ {
+  "id": "exp_006_baseline_i24_c3",
+  "type": "experiment",
+  "config": {
+   "name": "baseline_i24_c3",
+   "train": [],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": null
+  }
+ },
+ {
+  "id": "exp_007_ft_keepnorm_c3",
+  "type": "experiment",
+  "config": {
+   "name": "ft_keepnorm_c3",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.0003,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_008_ft_keepnorm_c3_lr1e-4_ep60",
+  "type": "experiment",
+  "config": {
+   "name": "ft_keepnorm_c3_lr1e-4_ep60",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 60,
+    "lr": 0.0001,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_009_ft_keepnorm_c3_lr1e-3",
+  "type": "experiment",
+  "config": {
+   "name": "ft_keepnorm_c3_lr1e-3",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_010_ft_keepnorm_c3_huber",
+  "type": "experiment",
+  "config": {
+   "name": "ft_keepnorm_c3_huber",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.0003,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "huber",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_011_ft_keepnorm_c3_seed1",
+  "type": "experiment",
+  "config": {
+   "name": "ft_keepnorm_c3_seed1",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.0003,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 1
+   }
+  }
+ },
+ {
+  "id": "exp_012_ft_keepnorm_c3_seed2",
+  "type": "experiment",
+  "config": {
+   "name": "ft_keepnorm_c3_seed2",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.0003,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 2
+   }
+  }
+ },
+ {
+  "id": "exp_013_ft_keepnorm_c3_wd0.1",
+  "type": "experiment",
+  "config": {
+   "name": "ft_keepnorm_c3_wd0.1",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.0003,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0,
+    "weight_decay": 0.1
+   }
+  }
  },
  {
   "id": "prep_session0_left",

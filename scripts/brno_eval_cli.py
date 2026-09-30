@@ -65,6 +65,7 @@ def main() -> None:
     p.add_argument("--detections", default=None, help="Reuse detections.csv from an earlier run (same frame step)")
     p.add_argument("--no-half", action="store_true", help="Run YOLO in fp32 (fp16 is the default on CUDA)")
     p.add_argument("--no-mask", action="store_true", help="Don't drop detections outside video_mask.png")
+    p.add_argument("--video", default=None, help="Read this copy of the recording's video.avi (e.g. on local disk)")
     p.add_argument("--out-dir", required=True)
     args = p.parse_args()
 
@@ -84,7 +85,7 @@ def main() -> None:
     print(f"[calib] {Path(args.calib).name}: {len(along)} along-road distances, "
           f"mean error {rel.mean():.2f}% (worst {rel.max():.2f}%)")
 
-    video = session / "video.avi"
+    video = Path(args.video) if args.video else session / "video.avi"
     fps, n_frames, img_w, img_h = video_info(video)
     print(f"[video] {video}: {n_frames} frames @ {fps:.2f} fps, {img_w}x{img_h}; ground truth fps {gt['fps']}")
     gt_first = min(c["intersections"][0]["videoTime"] for c in gt["cars"])
