@@ -189,6 +189,33 @@ Brno video is 50 fps; `--frame-step 2` (default) feeds the model 25 fps, closer 
 ~30 fps it was trained on. The AVIs declare 100 fps (padded with empty packets OpenCV skips),
 so time is decoded frame / the ground truth's fps, as in the official evaluation.
 
+#### Fine-tuning on Brno (split C: train sessions 0–3, test sessions 4–6)
+
+1. **Prepare** each recording once with `brno_eval_cli.py`: besides scoring the base model it
+   caches `windows.json` (model-ready inputs) and `labeled_windows.json` (windows of matched cars,
+   labeled with their measured speed).
+2. **Experiment** with `scripts/brno_experiment.py --config '<json>'`: fine-tunes a checkpoint on
+   the training recordings' labeled windows (`speed_lstm/finetune.py`; model selection on per-car
+   validation error in km/h), re-predicts the test recordings' cached windows and scores them with
+   the official matching — no detection or lifting is re-run, so an experiment takes seconds.
+   Results go to `runs/experiments/<id>/results.json` and a shared `leaderboard.csv`.
+3. **Automate** with `brno_finetune_worker.ipynb` in Colab: it runs `scripts/colab_worker.py`,
+   which works through `experiments/queue.json` and pulls this branch between jobs, so pushing new
+   jobs to the queue is all it takes to run more experiments.
+
+Center cameras, first 10 min of each recording (train sessions 1–3, test sessions 4–6, 489 cars):
+
+| | test MAE (km/h) |
+|---|---|
+| I-24 checkpoint, no fine-tuning | 6.75 |
+| official geometric speed of the same lifted tracks | 1.86 |
+| Brno reference system (Dubska, optimal calibration), same cameras | ≈1.35 |
+| fine-tuned (all layers, I-24 normalization kept, lr 1e-3, batch 64), 3-seed ensemble | **1.18** |
+
+What mattered: keep the I-24 feature/target normalization (refitting it, freezing the LSTM,
+head-only, or training from scratch were all worse), and enough optimizer steps (batch 64 or
+more epochs). Seed-to-seed spread is ~±0.1 km/h, so compare seed triples, not single runs.
+
 ## What's NOT in this scaffold (on purpose)
 
 - No detection/tracking for the v1 `speedmodel/` path — it assumes trajectory CSVs already
