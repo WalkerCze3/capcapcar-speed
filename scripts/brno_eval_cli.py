@@ -53,14 +53,17 @@ def main() -> None:
     p.add_argument("--conf", type=float, default=0.3)
     p.add_argument("--device", default=None)
     p.add_argument("--max-seconds", type=float, default=600.0, help="Process the first N seconds of the video")
-    p.add_argument("--frame-step", type=int, default=2,
-                   help="Read every n-th frame (2: 50 -> 25 fps, near the ~30 fps the model was trained on)")
+    p.add_argument("--frame-step", type=int, default=None,
+                   help="Read every n-th frame. Default: whatever gets closest to --target-fps")
+    p.add_argument("--target-fps", type=float, default=25.0,
+                   help="Frame rate the model sees when --frame-step isn't given (trained at ~30 fps)")
     p.add_argument("--video-fps", type=float, default=None,
                    help="Time base: seconds = decoded frame index / this. Default: the ground truth's fps "
                         "(OpenCV reports 100 fps for 50 fps Brno AVIs)")
     p.add_argument("--smooth", type=int, default=5)
     p.add_argument("--stride", type=int, default=4, help="Processed frames between window starts")
-    p.add_argument("--detections", default=None, help="Reuse detections.csv from an earlier run")
+    p.add_argument("--detections", default=None, help="Reuse detections.csv from an earlier run (same frame step)")
+    p.add_argument("--no-half", action="store_true", help="Run YOLO in fp32 (fp16 is the default on CUDA)")
     p.add_argument("--no-mask", action="store_true", help="Don't drop detections outside video_mask.png")
     p.add_argument("--out-dir", required=True)
     args = p.parse_args()
@@ -94,7 +97,7 @@ def main() -> None:
     print(f"[time] using {fps:g} fps (seconds = decoded frame / {fps:g}), as the official evaluation does")
     if (img_w, img_h) != (brno.WIDTH, brno.HEIGHT):
         print(f"[video] warning: Brno lines/calibration assume {brno.WIDTH}x{brno.HEIGHT}")
-    step = max(1, args.frame_step)
+    step = args.frame_step or max(1, round(fps / args.target_fps))
     max_samples = int(args.max_seconds * fps / step)
 
     if args.detections:
@@ -102,7 +105,7 @@ def main() -> None:
         dets = dets[dets["frame"] < max_samples]
     else:
         dets = detect_and_track(video, args.weights, conf=args.conf, device=args.device,
-                                max_frames=max_samples, frame_step=step)
+                                max_frames=max_samples, frame_step=step, half=not args.no_half)
     dets.to_csv(out_dir / "detections.csv", index=False)
     if not args.no_mask:
         dets = mask_filter(dets, session / "video_mask.png")
@@ -117,6 +120,7 @@ def main() -> None:
 
     predictor = Predictor(args.checkpoint)
     windows = build_video_windows(lifted, predictor.n_observations, args.stride, predictor.max_timestamp_gap)
+    (out_dir / "windows.json").write_text(json.dumps(windows))
     preds = predict_windows(predictor, windows)
     preds.to_csv(out_dir / "window_predictions.csv", index=False)
     print(f"[predict] {predictor.mode} model: {len(preds)} windows")
@@ -127,6 +131,10 @@ def main() -> None:
     matches = pd.DataFrame(brno.compute_matches(gt, cars, t_max))
     matches["model_kmh"] = brno.model_speed_for_matches(matches, preds)
     matches.to_csv(out_dir / "car_eval.csv", index=False)
+    labeled = brno.label_windows(windows, matches, session.name)
+    (out_dir / "labeled_windows.json").write_text(json.dumps(labeled))
+    print(f"[label] {len(labeled)} windows labeled with ground-truth speed "
+          f"({len({w['group'] for w in labeled})} cars) for fine-tuning")
 
     valid = matches[matches["valid"]]
     scored = valid[valid["matched"]]
@@ -135,6 +143,7 @@ def main() -> None:
         "gt_cars_valid": int(len(valid)), "matched": int(len(scored)),
         "recall": float(len(scored) / len(valid)) if len(valid) else float("nan"),
         "tracks_measured": int(sum("speed" in c for c in cars)), "tracks_failed": int(failed),
+        "frame_step": step, "labeled_windows": len(labeled),
         "gt_mean_kmh": float(scored["gt_kmh"].mean()) if len(scored) else float("nan"),
     }
     for col, name in (("model_kmh", "model"), ("full_kmh", "geometry_full"), ("median_kmh", "geometry_median")):

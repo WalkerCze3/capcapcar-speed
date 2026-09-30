@@ -71,3 +71,42 @@ def test_official_matching_recovers_speed_on_synthetic_track():
     m = compute_matches(gt, cars)
     assert m[0]["matched"] and m[0]["track_id"] == 7
     np.testing.assert_allclose(m[0]["full_kmh"], 90.0, rtol=1e-3)
+
+
+def test_label_windows_keeps_matched_pass_only():
+    from speed_lstm.brno import label_windows
+    matches = pd.DataFrame([
+        {"matched": True, "valid": True, "track_id": 1, "gt_id": 10, "gt_kmh": 72.0, "track_t_first": 2.0, "track_t_last": 3.0},
+        {"matched": True, "valid": False, "track_id": 2, "gt_id": 11, "gt_kmh": 50.0, "track_t_first": 2.0, "track_t_last": 3.0},
+        {"matched": False, "valid": True, "track_id": np.nan, "gt_id": 12, "gt_kmh": 60.0, "track_t_first": np.nan, "track_t_last": np.nan},
+    ])
+    w = lambda tid, t0: {"track_id": tid, "timestamps": [t0, t0 + 0.6]}
+    out = label_windows([w(1, 0.5), w(1, 2.2), w(1, 3.2), w(1, 5.0), w(2, 2.2), w(3, 2.2)], matches, "s9")
+    assert [o["timestamps"][0] for o in out] == [2.2, 3.2]
+    assert all(o["target_speed"] == 20.0 and o["group"] == "s9:10" for o in out)
+
+
+def test_finetune_runs_and_selects_by_val(tmp_path):
+    import torch
+    from speed_lstm import features_v2 as fv2
+    from speed_lstm.finetune import finetune, group_split
+    from speed_lstm.model import SpeedLSTM
+    n = fv2.n_features("3d")
+    m = SpeedLSTM(input_size=n)
+    torch.save({"model_state": m.state_dict(), "mode": "3d", "input_size": n, "hidden_size": m.hidden_size,
+                "n_observations": 16, "max_timestamp_gap": 0.2, "feature_mean": np.zeros(n), "feature_std": np.ones(n),
+                "target_mean": 20.0, "target_std": 5.0}, tmp_path / "init.pt")
+    rng = np.random.default_rng(0)
+    windows = []
+    for car in range(20):
+        v = rng.uniform(15, 35)
+        for k in range(4):
+            t = np.arange(16) * 0.04 + k
+            b3 = np.column_stack([v * t, np.zeros(16), np.full(16, 0.75), np.full((16, 3), [4.5, 1.8, 1.5])])
+            windows.append({"timestamps": t.tolist(), "boxes3d": b3.tolist(), "boxes2d": None,
+                            "target_speed": v, "group": f"c{car}"})
+    train, val = group_split(windows, 0.25, 0)
+    assert not {w["group"] for w in train} & {w["group"] for w in val}
+    res = finetune(tmp_path / "init.pt", train, val, tmp_path / "out", epochs=15, lr=3e-3, renorm="all", log=lambda *_: None)
+    assert (tmp_path / "out" / "best.pt").exists()
+    assert res["best"]["mae"] <= res["history"][0]["mae"]

@@ -292,3 +292,27 @@ def error_stats(errors: np.ndarray) -> dict:
         return {"n": 0}
     return {"n": int(len(e)), "mean": float(e.mean()), "median": float(np.median(e)),
             "p95": float(np.percentile(e, 95)), "worst": float(e.max())}
+
+
+# ------------------------------------------------------------ fine-tuning data
+
+def label_windows(windows: list[dict], matches: pd.DataFrame, recording: str, margin_s: float = 0.5) -> list[dict]:
+    """
+    Model-ready windows of matched, valid ground-truth cars, labeled with that
+    car's measured speed (m/s): the windows of the matched track that overlap
+    its line-to-line pass (± margin_s). Brno speeds are averages over that pass,
+    so windows well outside it aren't labeled.
+    """
+    good = matches[matches["matched"] & matches["valid"]]
+    by_track = {int(r["track_id"]): r for _, r in good.iterrows()}
+    out = []
+    for w in windows:
+        r = by_track.get(int(w["track_id"]))
+        if r is None:
+            continue
+        lo, hi = sorted((r["track_t_first"], r["track_t_last"]))
+        if w["timestamps"][-1] < lo - margin_s or w["timestamps"][0] > hi + margin_s:
+            continue
+        out.append({**w, "target_speed": float(r["gt_kmh"]) / 3.6, "group": f"{recording}:{int(r['gt_id'])}",
+                    "recording": recording})
+    return out

@@ -48,7 +48,7 @@ def video_info(video_path: str | Path) -> tuple[float, int, int, int]:
 
 def detect_and_track(video_path: str | Path, weights: str = "yolo11n.pt", tracker: str = "bytetrack.yaml",
                      conf: float = 0.3, device: str | None = None, max_frames: int | None = None,
-                     frame_step: int = 1) -> pd.DataFrame:
+                     frame_step: int = 1, half: bool = False) -> pd.DataFrame:
     """
     One row per (frame, track_id): frame, track_id, cls, conf, xmin, ymin, xmax, ymax (pixels).
 
@@ -64,7 +64,8 @@ def detect_and_track(video_path: str | Path, weights: str = "yolo11n.pt", tracke
 
     rows = []
     stream = model.track(source=str(video_path), stream=True, persist=True, tracker=tracker,
-                         classes=class_ids, conf=conf, device=device, vid_stride=frame_step, verbose=False)
+                         classes=class_ids, conf=conf, device=device, vid_stride=frame_step,
+                         half=half, verbose=False)
     for frame, result in enumerate(stream):
         if max_frames is not None and frame >= max_frames:
             break
