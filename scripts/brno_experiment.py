@@ -117,7 +117,9 @@ def main() -> None:
         "train_recordings": len(result.get("train_recordings", [])), "train_windows": result.get("n_train_windows"),
         **{f"ft_{k}": fcfg.get(k) for k in ("epochs", "lr", "weight_decay", "freeze", "renorm", "loss", "scratch", "seed")},
     }])
-    row.to_csv(board, mode="a", header=not board.exists(), index=False)
+    if board.exists():  # merge so rows written before a new column was added stay aligned
+        row = pd.concat([pd.read_csv(board), row], ignore_index=True)
+    row.to_csv(board, index=False)
 
 
 if __name__ == "__main__":
