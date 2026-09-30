@@ -1102,5 +1102,346 @@
   "id": "train_i24_2d",
   "type": "shell",
   "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/data --mode 2d --out /content/runs/v2/2d --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d && cp /content/runs/v2/2d/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d/best.pt"
+ },
+ {
+  "id": "exp_033_all9_baseline_i24",
+  "type": "experiment",
+  "config": {
+   "name": "all9_baseline_i24",
+   "train": [],
+   "test": [
+    "session4_left",
+    "session4_center",
+    "session4_right",
+    "session5_left",
+    "session5_center",
+    "session5_right",
+    "session6_left",
+    "session6_center",
+    "session6_right"
+   ],
+   "finetune": null
+  }
+ },
+ {
+  "id": "exp_034_all9_center_bs64_ens",
+  "type": "experiment",
+  "config": {
+   "name": "all9_center_bs64_ens",
+   "test": [
+    "session4_left",
+    "session4_center",
+    "session4_right",
+    "session5_left",
+    "session5_center",
+    "session5_right",
+    "session6_left",
+    "session6_center",
+    "session6_right"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_019_lr1e-3_bs64",
+    "exp_022_bs64_s1",
+    "exp_023_bs64_s2"
+   ]
+  }
+ },
+ {
+  "id": "exp_035_allviews_bs64_s0",
+  "type": "experiment",
+  "config": {
+   "name": "allviews_bs64_s0",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session0_right",
+    "session1_left",
+    "session1_center",
+    "session1_right",
+    "session2_left",
+    "session2_center",
+    "session2_right",
+    "session3_left",
+    "session3_center",
+    "session3_right"
+   ],
+   "test": [
+    "session4_left",
+    "session4_center",
+    "session4_right",
+    "session5_left",
+    "session5_center",
+    "session5_right",
+    "session6_left",
+    "session6_center",
+    "session6_right"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_036_allviews_bs64_s1",
+  "type": "experiment",
+  "config": {
+   "name": "allviews_bs64_s1",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session0_right",
+    "session1_left",
+    "session1_center",
+    "session1_right",
+    "session2_left",
+    "session2_center",
+    "session2_right",
+    "session3_left",
+    "session3_center",
+    "session3_right"
+   ],
+   "test": [
+    "session4_left",
+    "session4_center",
+    "session4_right",
+    "session5_left",
+    "session5_center",
+    "session5_right",
+    "session6_left",
+    "session6_center",
+    "session6_right"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 1
+   }
+  }
+ },
+ {
+  "id": "exp_037_allviews_bs64_s2",
+  "type": "experiment",
+  "config": {
+   "name": "allviews_bs64_s2",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session0_right",
+    "session1_left",
+    "session1_center",
+    "session1_right",
+    "session2_left",
+    "session2_center",
+    "session2_right",
+    "session3_left",
+    "session3_center",
+    "session3_right"
+   ],
+   "test": [
+    "session4_left",
+    "session4_center",
+    "session4_right",
+    "session5_left",
+    "session5_center",
+    "session5_right",
+    "session6_left",
+    "session6_center",
+    "session6_right"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 2
+   }
+  }
+ },
+ {
+  "id": "exp_038_allviews_bs64_ens",
+  "type": "experiment",
+  "config": {
+   "name": "allviews_bs64_ens",
+   "test": [
+    "session4_left",
+    "session4_center",
+    "session4_right",
+    "session5_left",
+    "session5_center",
+    "session5_right",
+    "session6_left",
+    "session6_center",
+    "session6_right"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_035_allviews_bs64_s0",
+    "exp_036_allviews_bs64_s1",
+    "exp_037_allviews_bs64_s2"
+   ]
+  }
+ },
+ {
+  "id": "exp_039_allviews_combined_bs64_s0",
+  "type": "experiment",
+  "config": {
+   "name": "allviews_combined_bs64_s0",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session0_right",
+    "session1_left",
+    "session1_center",
+    "session1_right",
+    "session2_left",
+    "session2_center",
+    "session2_right",
+    "session3_left",
+    "session3_center",
+    "session3_right"
+   ],
+   "test": [
+    "session4_left",
+    "session4_center",
+    "session4_right",
+    "session5_left",
+    "session5_center",
+    "session5_right",
+    "session6_left",
+    "session6_center",
+    "session6_right"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   },
+   "base_checkpoint": "runs/v2/combined/best.pt"
+  }
+ },
+ {
+  "id": "exp_040_allviews_combined_bs64_s1",
+  "type": "experiment",
+  "config": {
+   "name": "allviews_combined_bs64_s1",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session0_right",
+    "session1_left",
+    "session1_center",
+    "session1_right",
+    "session2_left",
+    "session2_center",
+    "session2_right",
+    "session3_left",
+    "session3_center",
+    "session3_right"
+   ],
+   "test": [
+    "session4_left",
+    "session4_center",
+    "session4_right",
+    "session5_left",
+    "session5_center",
+    "session5_right",
+    "session6_left",
+    "session6_center",
+    "session6_right"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 1
+   },
+   "base_checkpoint": "runs/v2/combined/best.pt"
+  }
+ },
+ {
+  "id": "exp_041_allviews_combined_bs64_s2",
+  "type": "experiment",
+  "config": {
+   "name": "allviews_combined_bs64_s2",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session0_right",
+    "session1_left",
+    "session1_center",
+    "session1_right",
+    "session2_left",
+    "session2_center",
+    "session2_right",
+    "session3_left",
+    "session3_center",
+    "session3_right"
+   ],
+   "test": [
+    "session4_left",
+    "session4_center",
+    "session4_right",
+    "session5_left",
+    "session5_center",
+    "session5_right",
+    "session6_left",
+    "session6_center",
+    "session6_right"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 2
+   },
+   "base_checkpoint": "runs/v2/combined/best.pt"
+  }
+ },
+ {
+  "id": "exp_042_allviews_combined_ens",
+  "type": "experiment",
+  "config": {
+   "name": "allviews_combined_ens",
+   "test": [
+    "session4_left",
+    "session4_center",
+    "session4_right",
+    "session5_left",
+    "session5_center",
+    "session5_right",
+    "session6_left",
+    "session6_center",
+    "session6_right"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_039_allviews_combined_bs64_s0",
+    "exp_040_allviews_combined_bs64_s1",
+    "exp_041_allviews_combined_bs64_s2"
+   ]
+  }
  }
 ]
