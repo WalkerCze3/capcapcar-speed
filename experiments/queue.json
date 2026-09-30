@@ -1096,12 +1096,14 @@
  {
   "id": "train_i24_combined",
   "type": "shell",
-  "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/data --mode combined --out /content/runs/v2/combined --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined && cp /content/runs/v2/combined/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined/best.pt"
+  "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/data --mode combined --out /content/runs/v2/combined --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined && cp /content/runs/v2/combined/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined/best.pt",
+  "needs_gpu": true
  },
  {
   "id": "train_i24_2d",
   "type": "shell",
-  "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/data --mode 2d --out /content/runs/v2/2d --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d && cp /content/runs/v2/2d/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d/best.pt"
+  "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/data --mode 2d --out /content/runs/v2/2d --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d && cp /content/runs/v2/2d/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d/best.pt",
+  "needs_gpu": true
  },
  {
   "id": "exp_033_all9_baseline_i24",
@@ -1121,7 +1123,18 @@
     "session6_right"
    ],
    "finetune": null
-  }
+  },
+  "requires_prepared": [
+   "session4_center",
+   "session4_left",
+   "session4_right",
+   "session5_center",
+   "session5_left",
+   "session5_right",
+   "session6_center",
+   "session6_left",
+   "session6_right"
+  ]
  },
  {
   "id": "exp_034_all9_center_bs64_ens",
@@ -1145,7 +1158,18 @@
     "exp_022_bs64_s1",
     "exp_023_bs64_s2"
    ]
-  }
+  },
+  "requires_prepared": [
+   "session4_center",
+   "session4_left",
+   "session4_right",
+   "session5_center",
+   "session5_left",
+   "session5_right",
+   "session6_center",
+   "session6_left",
+   "session6_right"
+  ]
  },
  {
   "id": "exp_035_allviews_bs64_s0",
@@ -1186,7 +1210,30 @@
     "loss": "mse",
     "seed": 0
    }
-  }
+  },
+  "requires_prepared": [
+   "session0_center",
+   "session0_left",
+   "session0_right",
+   "session1_center",
+   "session1_left",
+   "session1_right",
+   "session2_center",
+   "session2_left",
+   "session2_right",
+   "session3_center",
+   "session3_left",
+   "session3_right",
+   "session4_center",
+   "session4_left",
+   "session4_right",
+   "session5_center",
+   "session5_left",
+   "session5_right",
+   "session6_center",
+   "session6_left",
+   "session6_right"
+  ]
  },
  {
   "id": "exp_036_allviews_bs64_s1",
@@ -1227,7 +1274,30 @@
     "loss": "mse",
     "seed": 1
    }
-  }
+  },
+  "requires_prepared": [
+   "session0_center",
+   "session0_left",
+   "session0_right",
+   "session1_center",
+   "session1_left",
+   "session1_right",
+   "session2_center",
+   "session2_left",
+   "session2_right",
+   "session3_center",
+   "session3_left",
+   "session3_right",
+   "session4_center",
+   "session4_left",
+   "session4_right",
+   "session5_center",
+   "session5_left",
+   "session5_right",
+   "session6_center",
+   "session6_left",
+   "session6_right"
+  ]
  },
  {
   "id": "exp_037_allviews_bs64_s2",
@@ -1268,7 +1338,30 @@
     "loss": "mse",
     "seed": 2
    }
-  }
+  },
+  "requires_prepared": [
+   "session0_center",
+   "session0_left",
+   "session0_right",
+   "session1_center",
+   "session1_left",
+   "session1_right",
+   "session2_center",
+   "session2_left",
+   "session2_right",
+   "session3_center",
+   "session3_left",
+   "session3_right",
+   "session4_center",
+   "session4_left",
+   "session4_right",
+   "session5_center",
+   "session5_left",
+   "session5_right",
+   "session6_center",
+   "session6_left",
+   "session6_right"
+  ]
  },
  {
   "id": "exp_038_allviews_bs64_ens",
@@ -1292,7 +1385,18 @@
     "exp_036_allviews_bs64_s1",
     "exp_037_allviews_bs64_s2"
    ]
-  }
+  },
+  "requires_prepared": [
+   "session4_center",
+   "session4_left",
+   "session4_right",
+   "session5_center",
+   "session5_left",
+   "session5_right",
+   "session6_center",
+   "session6_left",
+   "session6_right"
+  ]
  },
  {
   "id": "exp_039_allviews_combined_bs64_s0",
@@ -1334,7 +1438,30 @@
     "seed": 0
    },
    "base_checkpoint": "runs/v2/combined/best.pt"
-  }
+  },
+  "requires_prepared": [
+   "session0_center",
+   "session0_left",
+   "session0_right",
+   "session1_center",
+   "session1_left",
+   "session1_right",
+   "session2_center",
+   "session2_left",
+   "session2_right",
+   "session3_center",
+   "session3_left",
+   "session3_right",
+   "session4_center",
+   "session4_left",
+   "session4_right",
+   "session5_center",
+   "session5_left",
+   "session5_right",
+   "session6_center",
+   "session6_left",
+   "session6_right"
+  ]
  },
  {
   "id": "exp_040_allviews_combined_bs64_s1",
@@ -1376,7 +1503,30 @@
     "seed": 1
    },
    "base_checkpoint": "runs/v2/combined/best.pt"
-  }
+  },
+  "requires_prepared": [
+   "session0_center",
+   "session0_left",
+   "session0_right",
+   "session1_center",
+   "session1_left",
+   "session1_right",
+   "session2_center",
+   "session2_left",
+   "session2_right",
+   "session3_center",
+   "session3_left",
+   "session3_right",
+   "session4_center",
+   "session4_left",
+   "session4_right",
+   "session5_center",
+   "session5_left",
+   "session5_right",
+   "session6_center",
+   "session6_left",
+   "session6_right"
+  ]
  },
  {
   "id": "exp_041_allviews_combined_bs64_s2",
@@ -1418,7 +1568,30 @@
     "seed": 2
    },
    "base_checkpoint": "runs/v2/combined/best.pt"
-  }
+  },
+  "requires_prepared": [
+   "session0_center",
+   "session0_left",
+   "session0_right",
+   "session1_center",
+   "session1_left",
+   "session1_right",
+   "session2_center",
+   "session2_left",
+   "session2_right",
+   "session3_center",
+   "session3_left",
+   "session3_right",
+   "session4_center",
+   "session4_left",
+   "session4_right",
+   "session5_center",
+   "session5_left",
+   "session5_right",
+   "session6_center",
+   "session6_left",
+   "session6_right"
+  ]
  },
  {
   "id": "exp_042_allviews_combined_ens",
@@ -1441,6 +1614,166 @@
     "exp_039_allviews_combined_bs64_s0",
     "exp_040_allviews_combined_bs64_s1",
     "exp_041_allviews_combined_bs64_s2"
+   ]
+  },
+  "requires_prepared": [
+   "session4_center",
+   "session4_left",
+   "session4_right",
+   "session5_center",
+   "session5_left",
+   "session5_right",
+   "session6_center",
+   "session6_left",
+   "session6_right"
+  ]
+ },
+ {
+  "id": "exp_043_moreviews_bs64_s0",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "moreviews_bs64_s0",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_044_moreviews_bs64_s1",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "moreviews_bs64_s1",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 1
+   }
+  }
+ },
+ {
+  "id": "exp_045_moreviews_bs64_s2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "moreviews_bs64_s2",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 2
+   }
+  }
+ },
+ {
+  "id": "exp_046_ens_moreviews_bs64",
+  "type": "experiment",
+  "requires_prepared": [
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "ens_moreviews_bs64",
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_043_moreviews_bs64_s0",
+    "exp_044_moreviews_bs64_s1",
+    "exp_045_moreviews_bs64_s2"
    ]
   }
  }

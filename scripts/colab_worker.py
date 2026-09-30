@@ -13,6 +13,10 @@ Job types:
    "reuse_detections": true}                     -> brno_eval_cli.py into <project>/runs/brno/<recording>
   {"id": ..., "type": "experiment", "config": {...}}  -> brno_experiment.py into <project>/runs/experiments/<id>
   {"id": ..., "type": "shell", "cmd": "..."}          -> anything else (run from the repo root)
+
+Jobs wait (neither run nor fail) while they can't run properly: "prepare" jobs and jobs with
+"needs_gpu": true wait for a GPU (YOLO on CPU takes hours per recording), and jobs with
+"requires_prepared": [recordings] wait until those recordings have been prepared.
 """
 
 from __future__ import annotations
@@ -88,6 +92,25 @@ def job_cmds(job: dict, args) -> list[list[str]]:
     raise ValueError(f"unknown job type {job['type']!r}")
 
 
+def has_gpu() -> bool:
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except ImportError:
+        return False
+
+
+def blocked(job: dict, args) -> str | None:
+    """Why `job` can't run yet, or None."""
+    if (job["type"] == "prepare" or job.get("needs_gpu")) and not args.gpu:
+        return "no GPU"
+    missing = [r for r in job.get("requires_prepared", [])
+               if not (Path(args.project) / "runs/brno" / r / "windows.json").exists()]
+    if missing:
+        return f"waiting for {missing}"
+    return None
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--project", required=True)
@@ -97,6 +120,8 @@ def main() -> None:
     p.add_argument("--poll", type=int, default=60)
     args = p.parse_args()
 
+    args.gpu = has_gpu()
+    print(f"[worker] {now()} GPU available: {args.gpu}", flush=True)
     state = Path(args.project) / "runs/worker"
     state.mkdir(parents=True, exist_ok=True)
 
@@ -117,12 +142,14 @@ def main() -> None:
 
         jobs = json.loads((REPO / args.queue).read_text())
         pending = [j for j in jobs if not any((state / j["id"] / m).exists() for m in ("DONE", "FAILED"))]
-        if not pending:
-            beat(status="idle", done=len(jobs))
+        runnable = [j for j in pending if blocked(j, args) is None]
+        if not runnable:
+            beat(status="idle", done=len(jobs) - len(pending), waiting={j["id"]: blocked(j, args) for j in pending},
+                 gpu=args.gpu)
             time.sleep(args.poll)
             continue
 
-        job = pending[0]
+        job = runnable[0]
         jdir = state / job["id"]
         jdir.mkdir(parents=True, exist_ok=True)
         beat(status="running", job=job["id"], started=now(), pending=len(pending))
