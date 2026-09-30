@@ -252,5 +252,15 @@
   "type": "prepare",
   "recording": "session6_right",
   "max_seconds": 600
+ },
+ {
+  "id": "train_i24_combined",
+  "type": "shell",
+  "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/data --mode combined --out /content/runs/v2/combined --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined && cp /content/runs/v2/combined/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined/best.pt"
+ },
+ {
+  "id": "train_i24_2d",
+  "type": "shell",
+  "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/data --mode 2d --out /content/runs/v2/2d --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d && cp /content/runs/v2/2d/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d/best.pt"
  }
 ]
