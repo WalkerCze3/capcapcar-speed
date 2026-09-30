@@ -572,6 +572,176 @@
   }
  },
  {
+  "id": "exp_015_lr1e-3_seed1",
+  "type": "experiment",
+  "config": {
+   "name": "lr1e-3_seed1",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 1
+   }
+  }
+ },
+ {
+  "id": "exp_016_lr1e-3_seed2",
+  "type": "experiment",
+  "config": {
+   "name": "lr1e-3_seed2",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 2
+   }
+  }
+ },
+ {
+  "id": "exp_017_lr3e-3",
+  "type": "experiment",
+  "config": {
+   "name": "lr3e-3",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.003,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_018_lr1e-3_ep60",
+  "type": "experiment",
+  "config": {
+   "name": "lr1e-3_ep60",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 60,
+    "lr": 0.001,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_019_lr1e-3_bs64",
+  "type": "experiment",
+  "config": {
+   "name": "lr1e-3_bs64",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0,
+    "batch_size": 64
+   }
+  }
+ },
+ {
+  "id": "exp_020_lr3e-3_bs64",
+  "type": "experiment",
+  "config": {
+   "name": "lr3e-3_bs64",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.003,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0,
+    "batch_size": 64
+   }
+  }
+ },
+ {
+  "id": "exp_021_ens_lr1e-3_seeds",
+  "type": "experiment",
+  "config": {
+   "name": "ens_lr1e-3_seeds",
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_009_ft_keepnorm_c3_lr1e-3_r2",
+    "exp_015_lr1e-3_seed1",
+    "exp_016_lr1e-3_seed2"
+   ]
+  }
+ },
+ {
   "id": "prep_session0_left",
   "type": "prepare",
   "recording": "session0_left",
