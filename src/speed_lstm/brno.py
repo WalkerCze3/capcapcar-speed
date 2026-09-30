@@ -89,12 +89,13 @@ def projection_from_calibration(vp1, vp2, pp, scale: float) -> np.ndarray:
     return K @ np.hstack([R, (-height_m * up)[:, None]])
 
 
-def load_calibration(path: str | Path) -> dict:
+def load_system(path: str | Path) -> tuple[dict, list[dict]]:
+    """A result json from the dataset's results/ dir: (camera_calibration, that system's own tracked cars)."""
     import json
 
     with open(path) as f:
         data = json.load(f)
-    return data.get("camera_calibration", data)
+    return data.get("camera_calibration", data), data.get("cars", [])
 
 
 # ------------------------------------------------------------------ ground truth
@@ -200,7 +201,7 @@ def prefilter(cars: list[dict], gt: dict) -> list[dict]:
     last_gt = max(c["intersections"][-1]["videoTime"] for c in gt["cars"])
     out = []
     for car in cars:
-        if not car["frames"] or car["frames"][0] / fps >= last_gt:
+        if not isinstance(car.get("posX"), list) or not car["frames"] or car["frames"][0] / fps >= last_gt:
             continue
         keep = [i for i, (x, y) in enumerate(zip(car["posX"], car["posY"]))
                 if SAFE_BORDER_OFFSET < x < WIDTH - SAFE_BORDER_OFFSET and SAFE_BORDER_OFFSET < y < HEIGHT - SAFE_BORDER_OFFSET]

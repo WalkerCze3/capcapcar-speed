@@ -71,7 +71,7 @@ def main() -> None:
     (out_dir / "run_config.json").write_text(json.dumps(vars(args), indent=2))
 
     gt = brno.load_gt(session / "gt_data.pkl")
-    calib = brno.load_calibration(args.calib)
+    calib, reference_cars = brno.load_system(args.calib)
     P = brno.projection_from_calibration(calib["vp1"], calib["vp2"], calib["pp"], calib["scale"])
     (out_dir / "calib_P.json").write_text(json.dumps({"P": P.tolist(), "source": args.calib}))
 
@@ -86,9 +86,10 @@ def main() -> None:
     print(f"[video] {video}: {n_frames} frames @ {fps:.2f} fps, {img_w}x{img_h}; ground truth fps {gt['fps']}")
     gt_first = min(c["intersections"][0]["videoTime"] for c in gt["cars"])
     gt_last = max(c["intersections"][-1]["videoTime"] for c in gt["cars"])
-    for name, f in (("reported", fps), ("ground truth", gt["fps"])):
-        print(f"[time] at {name} fps {f:g}: video lasts {n_frames / f:.0f} s; ground-truth cars cross "
-              f"the lines from {gt_first:.0f} s to {gt_last:.0f} s")
+    # Brno AVIs declare 100 fps and pad with empty packets that OpenCV skips when decoding, so the
+    # header's length (frames / fps) is right but decoded frames are 1/50 s apart.
+    print(f"[time] header: {n_frames / fps:.0f} s of video; ground-truth cars cross the lines "
+          f"from {gt_first:.0f} s to {gt_last:.0f} s")
     fps = args.video_fps or float(gt["fps"])
     print(f"[time] using {fps:g} fps (seconds = decoded frame / {fps:g}), as the official evaluation does")
     if (img_w, img_h) != (brno.WIDTH, brno.HEIGHT):
@@ -140,6 +141,24 @@ def main() -> None:
         err = scored[col] - scored["gt_kmh"]
         summary[name] = {**brno.error_stats(err), "bias": float(err.mean()) if len(err) else float("nan"),
                          "mean_rel_pct": float((err.abs() / scored["gt_kmh"]).mean() * 100) if len(err) else float("nan")}
+
+    # The calibration file's own system (e.g. Dubska et al.), scored by the same code over the same
+    # ground-truth cars: validates this evaluation and gives a reference for these numbers.
+    if reference_cars:
+        ref = brno.prefilter(reference_cars, gt)
+        brno.calculate_speeds(ref, gt, calib)
+        ref_m = pd.DataFrame(brno.compute_matches(gt, ref, t_max))
+        ref_m = ref_m[ref_m["valid"]]
+        ref_scored = ref_m[ref_m["matched"]]
+        summary["reference_system"] = {"matched": int(len(ref_scored)), "recall": float(ref_m["matched"].mean())}
+        for col, name in (("full_kmh", "full"), ("median_kmh", "median")):
+            err = ref_scored[col] - ref_scored["gt_kmh"]
+            summary["reference_system"][name] = {**brno.error_stats(err), "bias": float(err.mean())}
+        r = summary["reference_system"]
+        print(f"[reference] {Path(args.calib).name}'s own tracks, same scoring: {r['matched']} matched "
+              f"(recall {r['recall']:.2f}); mean error full {r['full'].get('mean', float('nan')):.2f} km/h, "
+              f"median-mode {r['median'].get('mean', float('nan')):.2f} km/h")
+
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
 
     print(f"[eval] {summary['matched']}/{summary['gt_cars_valid']} valid ground-truth cars matched "
