@@ -360,6 +360,24 @@
   }
  },
  {
+  "id": "exp_014_ens_seeds_c3",
+  "type": "experiment",
+  "config": {
+   "name": "ens_seeds_c3",
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "ensemble_of": [
+    "exp_007_ft_keepnorm_c3",
+    "exp_011_ft_keepnorm_c3_seed1",
+    "exp_012_ft_keepnorm_c3_seed2"
+   ],
+   "finetune": null
+  }
+ },
+ {
   "id": "prep_session0_left",
   "type": "prepare",
   "recording": "session0_left",
