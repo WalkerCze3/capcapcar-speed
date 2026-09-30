@@ -55,6 +55,8 @@ def main() -> None:
     p.add_argument("--max-seconds", type=float, default=600.0, help="Process the first N seconds of the video")
     p.add_argument("--frame-step", type=int, default=2,
                    help="Read every n-th frame (2: 50 -> 25 fps, near the ~30 fps the model was trained on)")
+    p.add_argument("--video-fps", type=float, default=None,
+                   help="Override the fps OpenCV reports (seconds = decoded frame index / this)")
     p.add_argument("--smooth", type=int, default=5)
     p.add_argument("--stride", type=int, default=4, help="Processed frames between window starts")
     p.add_argument("--detections", default=None, help="Reuse detections.csv from an earlier run")
@@ -81,6 +83,14 @@ def main() -> None:
     video = session / "video.avi"
     fps, n_frames, img_w, img_h = video_info(video)
     print(f"[video] {video}: {n_frames} frames @ {fps:.2f} fps, {img_w}x{img_h}; ground truth fps {gt['fps']}")
+    gt_first = min(c["intersections"][0]["videoTime"] for c in gt["cars"])
+    gt_last = max(c["intersections"][-1]["videoTime"] for c in gt["cars"])
+    for name, f in (("reported", fps), ("ground truth", gt["fps"])):
+        print(f"[time] at {name} fps {f:g}: video lasts {n_frames / f:.0f} s; ground-truth cars cross "
+              f"the lines from {gt_first:.0f} s to {gt_last:.0f} s")
+    if args.video_fps:
+        fps = args.video_fps
+        print(f"[time] using --video-fps {fps:g}")
     if (img_w, img_h) != (brno.WIDTH, brno.HEIGHT):
         print(f"[video] warning: Brno lines/calibration assume {brno.WIDTH}x{brno.HEIGHT}")
     step = max(1, args.frame_step)
