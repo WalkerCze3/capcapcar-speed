@@ -163,9 +163,11 @@ def finetune(init_checkpoint: str | Path, train_windows: list[dict], val_windows
             total += l.item() * len(idx)
         s = {"epoch": epoch, "train_loss": total / n, **val_score()}
         history.append(s)
-        log(f"[finetune] epoch {epoch:3d} | train loss {s['train_loss']:.4f} | val car MAE {s['mae']:.2f} km/h, "
-            f"bias {s['bias']:+.2f}")
-        if s["mae"] < best["mae"]:
+        improved = s["mae"] < best["mae"]
+        if improved or epoch % 5 == 0 or epoch == epochs:
+            log(f"[finetune] epoch {epoch:3d} | train loss {s['train_loss']:.4f} | val car MAE {s['mae']:.2f} km/h, "
+                f"bias {s['bias']:+.2f}{'  *' if improved else ''}")
+        if improved:
             best = s
             best_state = copy.deepcopy(model.state_dict())
 
