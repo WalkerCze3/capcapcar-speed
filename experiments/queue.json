@@ -1632,12 +1632,14 @@
   "id": "exp_043_moreviews_bs64_s0",
   "type": "experiment",
   "requires_prepared": [
-   "session0_left",
    "session0_center",
-   "session1_left",
-   "session2_left",
+   "session0_left",
+   "session0_right",
    "session1_center",
+   "session1_left",
+   "session1_right",
    "session2_center",
+   "session2_left",
    "session3_center",
    "session4_center",
    "session5_center",
@@ -1652,7 +1654,9 @@
     "session2_left",
     "session1_center",
     "session2_center",
-    "session3_center"
+    "session3_center",
+    "session0_right",
+    "session1_right"
    ],
    "test": [
     "session4_center",
@@ -1674,12 +1678,14 @@
   "id": "exp_044_moreviews_bs64_s1",
   "type": "experiment",
   "requires_prepared": [
-   "session0_left",
    "session0_center",
-   "session1_left",
-   "session2_left",
+   "session0_left",
+   "session0_right",
    "session1_center",
+   "session1_left",
+   "session1_right",
    "session2_center",
+   "session2_left",
    "session3_center",
    "session4_center",
    "session5_center",
@@ -1694,7 +1700,9 @@
     "session2_left",
     "session1_center",
     "session2_center",
-    "session3_center"
+    "session3_center",
+    "session0_right",
+    "session1_right"
    ],
    "test": [
     "session4_center",
@@ -1716,12 +1724,14 @@
   "id": "exp_045_moreviews_bs64_s2",
   "type": "experiment",
   "requires_prepared": [
-   "session0_left",
    "session0_center",
-   "session1_left",
-   "session2_left",
+   "session0_left",
+   "session0_right",
    "session1_center",
+   "session1_left",
+   "session1_right",
    "session2_center",
+   "session2_left",
    "session3_center",
    "session4_center",
    "session5_center",
@@ -1736,7 +1746,9 @@
     "session2_left",
     "session1_center",
     "session2_center",
-    "session3_center"
+    "session3_center",
+    "session0_right",
+    "session1_right"
    ],
    "test": [
     "session4_center",
