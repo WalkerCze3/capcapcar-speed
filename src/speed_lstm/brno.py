@@ -19,9 +19,10 @@ Evaluation (same rules as the official eval.py):
     linear fits around the line;
   - it is matched to the ground-truth car whose last-line crossing is within
     MAX_TIME_DIFF seconds, in the same lane;
-  - "full" speed = road distance between the first and last line crossings /
-    time, which is how Brno systems are scored. The v2 model's speed for the
-    same car is the median of its windows between those crossings.
+  - "median" speed = median of 5-frame road-plane speeds along the track (the
+    official eval.py default mode); "full" = road distance between the first
+    and last line crossings / time. The v2 model's speed for the same car is
+    the median of its windows between those crossings.
 """
 
 from __future__ import annotations

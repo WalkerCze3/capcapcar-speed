@@ -174,8 +174,10 @@ with the dataset's official rules (`speed_lstm/brno.py`, ported from
 built from the recording's calibration (vanishing points + scale, e.g.
 `results/session4_center/system_dubska_optimal_calib.json`), tracks are matched to
 ground-truth cars by their last-measurement-line crossing (±0.2 s, same lane), and errors
-are in km/h over valid cars — for the model and for the official geometric speed of the
-same lifted trajectory. `speed_video_brno_test.ipynb` runs it in Colab.
+are in km/h over valid cars — for the model and for the official geometric speeds of the
+same lifted trajectory (per-frame median, the official default, and line-to-line). The
+calibration file's own tracks (the dataset's reference system) are scored the same way as a
+reference. `speed_video_brno_test.ipynb` runs it in Colab.
 
 ```bash
 python scripts/brno_eval_cli.py --session-dir .../dataset/session4_center \
@@ -184,7 +186,8 @@ python scripts/brno_eval_cli.py --session-dir .../dataset/session4_center \
 ```
 
 Brno video is 50 fps; `--frame-step 2` (default) feeds the model 25 fps, closer to the
-~30 fps it was trained on.
+~30 fps it was trained on. The AVIs declare 100 fps (padded with empty packets OpenCV skips),
+so time is decoded frame / the ground truth's fps, as in the official evaluation.
 
 ## What's NOT in this scaffold (on purpose)
 
