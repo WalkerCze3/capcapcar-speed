@@ -166,6 +166,26 @@ Caveat: the model was trained on annotation-derived cuboids, and these are monoc
 from detector boxes. The metric scale comes entirely from the calibration, so a wrong P (or
 wrong `--calib-units`) scales every speed.
 
+#### BrnoCompSpeed
+
+`scripts/brno_eval_cli.py` runs the same pipeline on a BrnoCompSpeed recording and scores it
+with the dataset's official rules (`speed_lstm/brno.py`, ported from
+[JakubSochor/BrnoCompSpeed](https://github.com/JakubSochor/BrnoCompSpeed)): the camera P is
+built from the recording's calibration (vanishing points + scale, e.g.
+`results/session4_center/system_dubska_optimal_calib.json`), tracks are matched to
+ground-truth cars by their last-measurement-line crossing (±0.2 s, same lane), and errors
+are in km/h over valid cars — for the model and for the official geometric speed of the
+same lifted trajectory. `speed_video_brno_test.ipynb` runs it in Colab.
+
+```bash
+python scripts/brno_eval_cli.py --session-dir .../dataset/session4_center \
+    --calib .../results/session4_center/system_dubska_optimal_calib.json \
+    --checkpoint runs/v2/3d/best.pt --max-seconds 600 --out-dir runs/brno/session4_center
+```
+
+Brno video is 50 fps; `--frame-step 2` (default) feeds the model 25 fps, closer to the
+~30 fps it was trained on.
+
 ## What's NOT in this scaffold (on purpose)
 
 - No detection/tracking for the v1 `speedmodel/` path — it assumes trajectory CSVs already

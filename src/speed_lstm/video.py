@@ -47,8 +47,14 @@ def video_info(video_path: str | Path) -> tuple[float, int, int, int]:
 
 
 def detect_and_track(video_path: str | Path, weights: str = "yolo11n.pt", tracker: str = "bytetrack.yaml",
-                     conf: float = 0.3, device: str | None = None, max_frames: int | None = None) -> pd.DataFrame:
-    """One row per (frame, track_id): frame, track_id, cls, conf, xmin, ymin, xmax, ymax (pixels)."""
+                     conf: float = 0.3, device: str | None = None, max_frames: int | None = None,
+                     frame_step: int = 1) -> pd.DataFrame:
+    """
+    One row per (frame, track_id): frame, track_id, cls, conf, xmin, ymin, xmax, ymax (pixels).
+
+    frame_step > 1 reads every frame_step-th video frame (e.g. 2 turns 50 fps into 25 fps). `frame` and
+    max_frames then count processed frames, so video frame = frame * frame_step.
+    """
     from ultralytics import YOLO
 
     model = YOLO(weights)
@@ -58,7 +64,7 @@ def detect_and_track(video_path: str | Path, weights: str = "yolo11n.pt", tracke
 
     rows = []
     stream = model.track(source=str(video_path), stream=True, persist=True, tracker=tracker,
-                         classes=class_ids, conf=conf, device=device, verbose=False)
+                         classes=class_ids, conf=conf, device=device, vid_stride=frame_step, verbose=False)
     for frame, result in enumerate(stream):
         if max_frames is not None and frame >= max_frames:
             break
