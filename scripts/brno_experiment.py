@@ -57,8 +57,10 @@ def main() -> None:
         return ok
 
     ckpt = base
+    if cfg.get("ensemble_of"):  # average the best.pt of earlier experiments (no training here)
+        ckpt = [str(project / "runs/experiments" / e / "best.pt") for e in cfg["ensemble_of"]]
     result = {"name": cfg.get("name"), "config": cfg, "time": datetime.datetime.now().isoformat(timespec="seconds")}
-    if cfg.get("finetune") is not None:
+    if cfg.get("finetune") is not None and not cfg.get("ensemble_of"):
         train_recs = available(cfg.get("train", []), "labeled_windows.json")
         train = ft.load_json_windows([runs_root / r / "labeled_windows.json" for r in train_recs])
         if cfg.get("val"):

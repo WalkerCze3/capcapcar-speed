@@ -181,24 +181,29 @@ def finetune(init_checkpoint: str | Path, train_windows: list[dict], val_windows
     return {"checkpoint": str(out_dir / "best.pt"), "best": best, "history": history}
 
 
-def evaluate_recording(checkpoint: str | Path, run_dir: str | Path) -> pd.DataFrame:
+def evaluate_recording(checkpoint, run_dir: str | Path) -> pd.DataFrame:
     """
     Re-predict a prepared Brno run's cached windows (windows.json) with `checkpoint`
-    and return its car_eval rows (valid, matched cars) with a fresh model_kmh.
+    (or a list of checkpoints, whose window predictions are averaged) and return
+    its car_eval rows (valid, matched cars) with a fresh model_kmh.
     """
     from speed_lstm.brno import model_speed_for_matches
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    ckpt = load_checkpoint(checkpoint, device)
-    model = model_from_checkpoint(ckpt, device)
+    checkpoints = checkpoint if isinstance(checkpoint, (list, tuple)) else [checkpoint]
     run_dir = Path(run_dir)
     windows = json.loads((run_dir / "windows.json").read_text())
     matches = pd.read_csv(run_dir / "car_eval.csv")
+    speed = np.zeros(len(windows))
     if windows:
-        feats = np.stack([window_features(w, ckpt["mode"]) for w in windows]).astype(np.float64)
-        speed = predict_batch(model, ckpt, feats, device)
-    else:
-        speed = np.zeros(0)
+        feats_by_mode = {}
+        for c in checkpoints:
+            ckpt = load_checkpoint(c, device)
+            mode = ckpt["mode"]
+            if mode not in feats_by_mode:
+                feats_by_mode[mode] = np.stack([window_features(w, mode) for w in windows]).astype(np.float64)
+            speed += predict_batch(model_from_checkpoint(ckpt, device), ckpt, feats_by_mode[mode], device)
+        speed /= len(checkpoints)
     preds = pd.DataFrame({"track_id": [w["track_id"] for w in windows],
                           "t_start": [w["timestamps"][0] for w in windows],
                           "t_end": [w["timestamps"][-1] for w in windows],
