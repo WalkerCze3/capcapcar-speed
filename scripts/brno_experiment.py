@@ -120,6 +120,12 @@ def main() -> None:
     if board.exists():  # merge so rows written before a new column was added stay aligned
         row = pd.concat([pd.read_csv(board), row], ignore_index=True)
     row.to_csv(board, index=False)
+    cols = [c for c in ("id", "test_mae", "test_median", "test_bias", "hybrid_mae", "geometry_mae", "test_cars",
+                        "test_recordings", "train_recordings", "train_windows", "val_mae", "best_epoch") if c in row]
+    view = row[cols].round(2)
+    (board.parent / "leaderboard_summary.txt").write_text(
+        "TOP 12 by test_mae\n" + view.sort_values("test_mae").head(12).to_string(index=False)
+        + "\n\nLATEST 12\n" + view.tail(12).to_string(index=False) + "\n")
 
 
 if __name__ == "__main__":
