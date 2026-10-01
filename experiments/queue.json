@@ -161,6 +161,606 @@
   }
  },
  {
+  "id": "exp_055_moreviews_lr3e-4_s0",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session0_right",
+   "session1_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "moreviews_lr3e-4_s0",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.0003,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_056_moreviews_lr3e-4_s1",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session0_right",
+   "session1_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "moreviews_lr3e-4_s1",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.0003,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 1
+   }
+  }
+ },
+ {
+  "id": "exp_057_moreviews_lr3e-4_s2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session0_right",
+   "session1_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "moreviews_lr3e-4_s2",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.0003,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 2
+   }
+  }
+ },
+ {
+  "id": "exp_058_ens_moreviews_lr3e-4",
+  "type": "experiment",
+  "config": {
+   "name": "ens_moreviews_lr3e-4",
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_055_moreviews_lr3e-4_s0",
+    "exp_056_moreviews_lr3e-4_s1",
+    "exp_057_moreviews_lr3e-4_s2"
+   ]
+  }
+ },
+ {
+  "id": "exp_059_moreviews_ep60_s0",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session0_right",
+   "session1_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "moreviews_ep60_s0",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 60,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_060_moreviews_ep60_s1",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session0_right",
+   "session1_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "moreviews_ep60_s1",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 60,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 1
+   }
+  }
+ },
+ {
+  "id": "exp_061_moreviews_ep60_s2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session0_right",
+   "session1_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "moreviews_ep60_s2",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 60,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 2
+   }
+  }
+ },
+ {
+  "id": "exp_062_ens_moreviews_ep60",
+  "type": "experiment",
+  "config": {
+   "name": "ens_moreviews_ep60",
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_059_moreviews_ep60_s0",
+    "exp_060_moreviews_ep60_s1",
+    "exp_061_moreviews_ep60_s2"
+   ]
+  }
+ },
+ {
+  "id": "train_i24_combined_r2",
+  "type": "shell",
+  "cmd": "D=$(for d in /content/drive/MyDrive/Final-Project-CHULA/I24-3D/data /content/drive/MyDrive/Final-Project-CHULA/data; do [ -d \"$d/obj\" ] && echo \"$d\" && break; done); echo \"I-24 data: $D\"; python scripts/train_v2_cli.py --data-dir \"$D\" --mode combined --out /content/runs/v2/combined --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined && cp /content/runs/v2/combined/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined/best.pt",
+  "needs_gpu": true
+ },
+ {
+  "id": "exp_047_combined_c3_bs64_s0_r2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "combined_c3_bs64_s0",
+   "base_checkpoint": "runs/v2/combined/best.pt",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_048_combined_c3_bs64_s1_r2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "combined_c3_bs64_s1",
+   "base_checkpoint": "runs/v2/combined/best.pt",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 1
+   }
+  }
+ },
+ {
+  "id": "exp_049_combined_c3_bs64_s2_r2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "combined_c3_bs64_s2",
+   "base_checkpoint": "runs/v2/combined/best.pt",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 2
+   }
+  }
+ },
+ {
+  "id": "exp_050_ens_combined_c3_r2",
+  "type": "experiment",
+  "config": {
+   "name": "ens_combined_c3",
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_047_combined_c3_bs64_s0_r2",
+    "exp_048_combined_c3_bs64_s1_r2",
+    "exp_049_combined_c3_bs64_s2_r2"
+   ]
+  }
+ },
+ {
+  "id": "exp_051_combined_moreviews_s0_r2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session0_right",
+   "session1_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "combined_moreviews_s0",
+   "base_checkpoint": "runs/v2/combined/best.pt",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_052_combined_moreviews_s1_r2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session0_right",
+   "session1_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "combined_moreviews_s1",
+   "base_checkpoint": "runs/v2/combined/best.pt",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 1
+   }
+  }
+ },
+ {
+  "id": "exp_053_combined_moreviews_s2_r2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session0_right",
+   "session1_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "combined_moreviews_s2",
+   "base_checkpoint": "runs/v2/combined/best.pt",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 2
+   }
+  }
+ },
+ {
+  "id": "exp_054_ens_combined_moreviews_r2",
+  "type": "experiment",
+  "config": {
+   "name": "ens_combined_moreviews",
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_051_combined_moreviews_s0_r2",
+    "exp_052_combined_moreviews_s1_r2",
+    "exp_053_combined_moreviews_s2_r2"
+   ]
+  }
+ },
+ {
   "id": "train_i24_combined",
   "type": "shell",
   "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/data --mode combined --out /content/runs/v2/combined --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined && cp /content/runs/v2/combined/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined/best.pt",
@@ -1545,7 +2145,7 @@
  {
   "id": "train_i24_2d",
   "type": "shell",
-  "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/data --mode 2d --out /content/runs/v2/2d --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d && cp /content/runs/v2/2d/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d/best.pt",
+  "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/I24-3D/data --mode 2d --out /content/runs/v2/2d --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d && cp /content/runs/v2/2d/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d/best.pt",
   "needs_gpu": true
  },
  {
