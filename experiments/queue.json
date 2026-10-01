@@ -761,6 +761,118 @@
   }
  },
  {
+  "id": "exp_063_moreviews_ep60_s3",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session0_right",
+   "session1_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "moreviews_ep60_s3",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 60,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 3
+   }
+  }
+ },
+ {
+  "id": "exp_064_moreviews_ep60_s4",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session0_right",
+   "session1_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "moreviews_ep60_s4",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 60,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 4
+   }
+  }
+ },
+ {
+  "id": "exp_065_ens5_moreviews_ep60",
+  "type": "experiment",
+  "config": {
+   "name": "ens5_moreviews_ep60",
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_059_moreviews_ep60_s0",
+    "exp_060_moreviews_ep60_s1",
+    "exp_061_moreviews_ep60_s2",
+    "exp_063_moreviews_ep60_s3",
+    "exp_064_moreviews_ep60_s4"
+   ]
+  }
+ },
+ {
   "id": "train_i24_combined",
   "type": "shell",
   "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/data --mode combined --out /content/runs/v2/combined --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined && cp /content/runs/v2/combined/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined/best.pt",
@@ -2245,7 +2357,7 @@
     "session6_right"
    ],
    "finetune": {
-    "epochs": 30,
+    "epochs": 60,
     "lr": 0.001,
     "batch_size": 64,
     "freeze": "none",
@@ -2309,7 +2421,7 @@
     "session6_right"
    ],
    "finetune": {
-    "epochs": 30,
+    "epochs": 60,
     "lr": 0.001,
     "batch_size": 64,
     "freeze": "none",
@@ -2373,7 +2485,7 @@
     "session6_right"
    ],
    "finetune": {
-    "epochs": 30,
+    "epochs": 60,
     "lr": 0.001,
     "batch_size": 64,
     "freeze": "none",
@@ -2427,236 +2539,6 @@
     "exp_035_allviews_bs64_s0",
     "exp_036_allviews_bs64_s1",
     "exp_037_allviews_bs64_s2"
-   ]
-  },
-  "requires_prepared": [
-   "session4_center",
-   "session4_left",
-   "session4_right",
-   "session5_center",
-   "session5_left",
-   "session5_right",
-   "session6_center",
-   "session6_left",
-   "session6_right"
-  ]
- },
- {
-  "id": "exp_039_allviews_combined_bs64_s0",
-  "type": "experiment",
-  "config": {
-   "name": "allviews_combined_bs64_s0",
-   "train": [
-    "session0_left",
-    "session0_center",
-    "session0_right",
-    "session1_left",
-    "session1_center",
-    "session1_right",
-    "session2_left",
-    "session2_center",
-    "session2_right",
-    "session3_left",
-    "session3_center",
-    "session3_right"
-   ],
-   "test": [
-    "session4_left",
-    "session4_center",
-    "session4_right",
-    "session5_left",
-    "session5_center",
-    "session5_right",
-    "session6_left",
-    "session6_center",
-    "session6_right"
-   ],
-   "finetune": {
-    "epochs": 30,
-    "lr": 0.001,
-    "batch_size": 64,
-    "freeze": "none",
-    "renorm": "keep",
-    "loss": "mse",
-    "seed": 0
-   },
-   "base_checkpoint": "runs/v2/combined/best.pt"
-  },
-  "requires_prepared": [
-   "session0_center",
-   "session0_left",
-   "session0_right",
-   "session1_center",
-   "session1_left",
-   "session1_right",
-   "session2_center",
-   "session2_left",
-   "session2_right",
-   "session3_center",
-   "session3_left",
-   "session3_right",
-   "session4_center",
-   "session4_left",
-   "session4_right",
-   "session5_center",
-   "session5_left",
-   "session5_right",
-   "session6_center",
-   "session6_left",
-   "session6_right"
-  ]
- },
- {
-  "id": "exp_040_allviews_combined_bs64_s1",
-  "type": "experiment",
-  "config": {
-   "name": "allviews_combined_bs64_s1",
-   "train": [
-    "session0_left",
-    "session0_center",
-    "session0_right",
-    "session1_left",
-    "session1_center",
-    "session1_right",
-    "session2_left",
-    "session2_center",
-    "session2_right",
-    "session3_left",
-    "session3_center",
-    "session3_right"
-   ],
-   "test": [
-    "session4_left",
-    "session4_center",
-    "session4_right",
-    "session5_left",
-    "session5_center",
-    "session5_right",
-    "session6_left",
-    "session6_center",
-    "session6_right"
-   ],
-   "finetune": {
-    "epochs": 30,
-    "lr": 0.001,
-    "batch_size": 64,
-    "freeze": "none",
-    "renorm": "keep",
-    "loss": "mse",
-    "seed": 1
-   },
-   "base_checkpoint": "runs/v2/combined/best.pt"
-  },
-  "requires_prepared": [
-   "session0_center",
-   "session0_left",
-   "session0_right",
-   "session1_center",
-   "session1_left",
-   "session1_right",
-   "session2_center",
-   "session2_left",
-   "session2_right",
-   "session3_center",
-   "session3_left",
-   "session3_right",
-   "session4_center",
-   "session4_left",
-   "session4_right",
-   "session5_center",
-   "session5_left",
-   "session5_right",
-   "session6_center",
-   "session6_left",
-   "session6_right"
-  ]
- },
- {
-  "id": "exp_041_allviews_combined_bs64_s2",
-  "type": "experiment",
-  "config": {
-   "name": "allviews_combined_bs64_s2",
-   "train": [
-    "session0_left",
-    "session0_center",
-    "session0_right",
-    "session1_left",
-    "session1_center",
-    "session1_right",
-    "session2_left",
-    "session2_center",
-    "session2_right",
-    "session3_left",
-    "session3_center",
-    "session3_right"
-   ],
-   "test": [
-    "session4_left",
-    "session4_center",
-    "session4_right",
-    "session5_left",
-    "session5_center",
-    "session5_right",
-    "session6_left",
-    "session6_center",
-    "session6_right"
-   ],
-   "finetune": {
-    "epochs": 30,
-    "lr": 0.001,
-    "batch_size": 64,
-    "freeze": "none",
-    "renorm": "keep",
-    "loss": "mse",
-    "seed": 2
-   },
-   "base_checkpoint": "runs/v2/combined/best.pt"
-  },
-  "requires_prepared": [
-   "session0_center",
-   "session0_left",
-   "session0_right",
-   "session1_center",
-   "session1_left",
-   "session1_right",
-   "session2_center",
-   "session2_left",
-   "session2_right",
-   "session3_center",
-   "session3_left",
-   "session3_right",
-   "session4_center",
-   "session4_left",
-   "session4_right",
-   "session5_center",
-   "session5_left",
-   "session5_right",
-   "session6_center",
-   "session6_left",
-   "session6_right"
-  ]
- },
- {
-  "id": "exp_042_allviews_combined_ens",
-  "type": "experiment",
-  "config": {
-   "name": "allviews_combined_ens",
-   "test": [
-    "session4_left",
-    "session4_center",
-    "session4_right",
-    "session5_left",
-    "session5_center",
-    "session5_right",
-    "session6_left",
-    "session6_center",
-    "session6_right"
-   ],
-   "finetune": null,
-   "ensemble_of": [
-    "exp_039_allviews_combined_bs64_s0",
-    "exp_040_allviews_combined_bs64_s1",
-    "exp_041_allviews_combined_bs64_s2"
    ]
   },
   "requires_prepared": [
