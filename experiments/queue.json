@@ -1,5 +1,454 @@
 [
  {
+  "id": "exp_043_moreviews_bs64_s0",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_center",
+   "session0_left",
+   "session0_right",
+   "session1_center",
+   "session1_left",
+   "session1_right",
+   "session2_center",
+   "session2_left",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "moreviews_bs64_s0",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_044_moreviews_bs64_s1",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_center",
+   "session0_left",
+   "session0_right",
+   "session1_center",
+   "session1_left",
+   "session1_right",
+   "session2_center",
+   "session2_left",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "moreviews_bs64_s1",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 1
+   }
+  }
+ },
+ {
+  "id": "exp_045_moreviews_bs64_s2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_center",
+   "session0_left",
+   "session0_right",
+   "session1_center",
+   "session1_left",
+   "session1_right",
+   "session2_center",
+   "session2_left",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "moreviews_bs64_s2",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 2
+   }
+  }
+ },
+ {
+  "id": "exp_046_ens_moreviews_bs64",
+  "type": "experiment",
+  "requires_prepared": [
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "ens_moreviews_bs64",
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_043_moreviews_bs64_s0",
+    "exp_044_moreviews_bs64_s1",
+    "exp_045_moreviews_bs64_s2"
+   ]
+  }
+ },
+ {
+  "id": "train_i24_combined",
+  "type": "shell",
+  "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/data --mode combined --out /content/runs/v2/combined --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined && cp /content/runs/v2/combined/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined/best.pt",
+  "needs_gpu": true
+ },
+ {
+  "id": "exp_047_combined_c3_bs64_s0",
+  "type": "experiment",
+  "requires_prepared": [
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "combined_c3_bs64_s0",
+   "base_checkpoint": "runs/v2/combined/best.pt",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_048_combined_c3_bs64_s1",
+  "type": "experiment",
+  "requires_prepared": [
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "combined_c3_bs64_s1",
+   "base_checkpoint": "runs/v2/combined/best.pt",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 1
+   }
+  }
+ },
+ {
+  "id": "exp_049_combined_c3_bs64_s2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "combined_c3_bs64_s2",
+   "base_checkpoint": "runs/v2/combined/best.pt",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 2
+   }
+  }
+ },
+ {
+  "id": "exp_050_ens_combined_c3",
+  "type": "experiment",
+  "config": {
+   "name": "ens_combined_c3",
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_047_combined_c3_bs64_s0",
+    "exp_048_combined_c3_bs64_s1",
+    "exp_049_combined_c3_bs64_s2"
+   ]
+  }
+ },
+ {
+  "id": "exp_051_combined_moreviews_s0",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session0_right",
+   "session1_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "combined_moreviews_s0",
+   "base_checkpoint": "runs/v2/combined/best.pt",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_052_combined_moreviews_s1",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session0_right",
+   "session1_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "combined_moreviews_s1",
+   "base_checkpoint": "runs/v2/combined/best.pt",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 1
+   }
+  }
+ },
+ {
+  "id": "exp_053_combined_moreviews_s2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session1_left",
+   "session2_left",
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session0_right",
+   "session1_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "combined_moreviews_s2",
+   "base_checkpoint": "runs/v2/combined/best.pt",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session1_left",
+    "session2_left",
+    "session1_center",
+    "session2_center",
+    "session3_center",
+    "session0_right",
+    "session1_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 2
+   }
+  }
+ },
+ {
+  "id": "exp_054_ens_combined_moreviews",
+  "type": "experiment",
+  "config": {
+   "name": "ens_combined_moreviews",
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_051_combined_moreviews_s0",
+    "exp_052_combined_moreviews_s1",
+    "exp_053_combined_moreviews_s2"
+   ]
+  }
+ },
+ {
   "id": "prep_session4_center",
   "type": "prepare",
   "recording": "session4_center",
@@ -1094,12 +1543,6 @@
   "max_seconds": 600
  },
  {
-  "id": "train_i24_combined",
-  "type": "shell",
-  "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/data --mode combined --out /content/runs/v2/combined --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined && cp /content/runs/v2/combined/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/combined/best.pt",
-  "needs_gpu": true
- },
- {
   "id": "train_i24_2d",
   "type": "shell",
   "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/data --mode 2d --out /content/runs/v2/2d --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d && cp /content/runs/v2/2d/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d/best.pt",
@@ -1627,166 +2070,5 @@
    "session6_left",
    "session6_right"
   ]
- },
- {
-  "id": "exp_043_moreviews_bs64_s0",
-  "type": "experiment",
-  "requires_prepared": [
-   "session0_center",
-   "session0_left",
-   "session0_right",
-   "session1_center",
-   "session1_left",
-   "session1_right",
-   "session2_center",
-   "session2_left",
-   "session3_center",
-   "session4_center",
-   "session5_center",
-   "session6_center"
-  ],
-  "config": {
-   "name": "moreviews_bs64_s0",
-   "train": [
-    "session0_left",
-    "session0_center",
-    "session1_left",
-    "session2_left",
-    "session1_center",
-    "session2_center",
-    "session3_center",
-    "session0_right",
-    "session1_right"
-   ],
-   "test": [
-    "session4_center",
-    "session5_center",
-    "session6_center"
-   ],
-   "finetune": {
-    "epochs": 30,
-    "lr": 0.001,
-    "batch_size": 64,
-    "freeze": "none",
-    "renorm": "keep",
-    "loss": "mse",
-    "seed": 0
-   }
-  }
- },
- {
-  "id": "exp_044_moreviews_bs64_s1",
-  "type": "experiment",
-  "requires_prepared": [
-   "session0_center",
-   "session0_left",
-   "session0_right",
-   "session1_center",
-   "session1_left",
-   "session1_right",
-   "session2_center",
-   "session2_left",
-   "session3_center",
-   "session4_center",
-   "session5_center",
-   "session6_center"
-  ],
-  "config": {
-   "name": "moreviews_bs64_s1",
-   "train": [
-    "session0_left",
-    "session0_center",
-    "session1_left",
-    "session2_left",
-    "session1_center",
-    "session2_center",
-    "session3_center",
-    "session0_right",
-    "session1_right"
-   ],
-   "test": [
-    "session4_center",
-    "session5_center",
-    "session6_center"
-   ],
-   "finetune": {
-    "epochs": 30,
-    "lr": 0.001,
-    "batch_size": 64,
-    "freeze": "none",
-    "renorm": "keep",
-    "loss": "mse",
-    "seed": 1
-   }
-  }
- },
- {
-  "id": "exp_045_moreviews_bs64_s2",
-  "type": "experiment",
-  "requires_prepared": [
-   "session0_center",
-   "session0_left",
-   "session0_right",
-   "session1_center",
-   "session1_left",
-   "session1_right",
-   "session2_center",
-   "session2_left",
-   "session3_center",
-   "session4_center",
-   "session5_center",
-   "session6_center"
-  ],
-  "config": {
-   "name": "moreviews_bs64_s2",
-   "train": [
-    "session0_left",
-    "session0_center",
-    "session1_left",
-    "session2_left",
-    "session1_center",
-    "session2_center",
-    "session3_center",
-    "session0_right",
-    "session1_right"
-   ],
-   "test": [
-    "session4_center",
-    "session5_center",
-    "session6_center"
-   ],
-   "finetune": {
-    "epochs": 30,
-    "lr": 0.001,
-    "batch_size": 64,
-    "freeze": "none",
-    "renorm": "keep",
-    "loss": "mse",
-    "seed": 2
-   }
-  }
- },
- {
-  "id": "exp_046_ens_moreviews_bs64",
-  "type": "experiment",
-  "requires_prepared": [
-   "session4_center",
-   "session5_center",
-   "session6_center"
-  ],
-  "config": {
-   "name": "ens_moreviews_bs64",
-   "test": [
-    "session4_center",
-    "session5_center",
-    "session6_center"
-   ],
-   "finetune": null,
-   "ensemble_of": [
-    "exp_043_moreviews_bs64_s0",
-    "exp_044_moreviews_bs64_s1",
-    "exp_045_moreviews_bs64_s2"
-   ]
-  }
  }
 ]
