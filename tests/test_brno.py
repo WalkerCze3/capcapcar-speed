@@ -160,3 +160,23 @@ def test_experiment_accepts_long_inline_config(tmp_path):
                         "--config", json.dumps(cfg), "--project", str(tmp_path), "--out-dir", str(tmp_path / "out")],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+def test_reground_puts_bbox_bottom_center_on_the_road():
+    import sys
+    from pathlib import Path
+    import pandas as pd
+    from speed_lstm import brno
+    sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+    from brno_reground import ground_tracks
+    P = brno.projection_from_calibration([665.57, -527.55], [60307.14, 763.03], [960.5, 540.5], 0.017053)
+    xs = np.linspace(30.0, 60.0, 12)                                   # straight, constant-speed path at y = 1, in view
+    uvw = np.column_stack([xs, np.ones_like(xs), np.zeros_like(xs), np.ones_like(xs)]) @ P.T
+    u, v = uvw[:, 0] / uvw[:, 2], uvw[:, 1] / uvw[:, 2]
+    dets = pd.DataFrame({"frame": np.arange(12), "track_id": 7, "cls": "car", "conf": 0.9,
+                         "xmin": u - 20, "ymin": v - 15, "xmax": u + 20, "ymax": v})
+    out = ground_tracks(dets, pd.DataFrame(columns=["track_id", "length", "width", "height"]), P, step=2, fps=50.0)
+    assert len(out) == 12
+    mid = slice(2, -2)                                                 # the moving average shortens at the ends
+    assert np.allclose(out["cx"].to_numpy()[mid], xs[mid], atol=1e-6) and np.allclose(out["cy"], 1.0, atol=1e-6)
+    assert np.allclose(out["timestamp"], np.arange(12) * 2 / 50.0)
