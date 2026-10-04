@@ -69,6 +69,8 @@ def main() -> None:
             val = ft.load_json_windows([runs_root / r / "labeled_windows.json" for r in val_recs])
         else:
             train, val = ft.group_split(train, cfg.get("val_frac", 0.15), cfg["finetune"].get("seed", 0))
+        if cfg["finetune"].get("target") == "residual":  # corrections to each car's geometric speed
+            train, val = ft.attach_base_speed(train, runs_root), ft.attach_base_speed(val, runs_root)
         if not train or not val:
             raise SystemExit(f"[exp] not enough labeled windows: {len(train)} train / {len(val)} val")
         res = ft.finetune(base, train, val, out_dir, **cfg["finetune"])
@@ -115,7 +117,7 @@ def main() -> None:
         "geometry_mae": result["test_geometry_median"].get("mae"), "hybrid_mae": result["test_hybrid"].get("mae"),
         "val_mae": result.get("val_best", {}).get("mae"), "best_epoch": result.get("val_best", {}).get("epoch"),
         "train_recordings": len(result.get("train_recordings", [])), "train_windows": result.get("n_train_windows"),
-        **{f"ft_{k}": fcfg.get(k) for k in ("epochs", "lr", "weight_decay", "freeze", "renorm", "loss", "scratch", "seed")},
+        **{f"ft_{k}": fcfg.get(k) for k in ("epochs", "lr", "weight_decay", "freeze", "renorm", "loss", "scratch", "target", "seed")},
     }])
     if board.exists():  # merge so rows written before a new column was added stay aligned
         row = pd.concat([pd.read_csv(board), row], ignore_index=True)

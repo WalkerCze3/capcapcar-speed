@@ -17,6 +17,10 @@ Options:
            | all (refit features and target)
   loss:    mse | huber (on standardized targets)
   scratch: ignore the checkpoint's weights (same architecture), for comparison
+  target:  speed (predict the speed itself) | residual (predict a correction to
+           the car's official geometric speed, window["base_speed"], added by
+           attach_base_speed; the last layer starts at zero, so epoch 0 is the
+           geometry alone and model selection can fall back to it)
 """
 
 from __future__ import annotations
@@ -52,6 +56,23 @@ def load_checkpoint(path, device="cpu") -> dict:
     return torch.load(path, map_location=device, weights_only=False)
 
 
+def attach_base_speed(windows: list[dict], runs_root: str | Path) -> list[dict]:
+    """
+    Labeled windows plus base_speed (m/s): their car's official geometric ("median"
+    mode) speed from the recording's car_eval.csv. Windows of cars without one are dropped.
+    """
+    base = {}
+    for rec in sorted({w["recording"] for w in windows}):
+        m = pd.read_csv(Path(runs_root) / rec / "car_eval.csv")
+        m = m[m["matched"] & m["median_kmh"].notna()]
+        base.update({f"{rec}:{int(g)}": v / 3.6 for g, v in zip(m["gt_id"], m["median_kmh"])})
+    return [{**w, "base_speed": base[w["group"]]} for w in windows if w["group"] in base]
+
+
+def is_residual(ckpt: dict) -> bool:
+    return ckpt.get("target", "speed") == "residual"
+
+
 def model_from_checkpoint(ckpt: dict, device) -> SpeedLSTM:
     model = SpeedLSTM(input_size=ckpt["input_size"], hidden_size=ckpt["hidden_size"]).to(device)
     model.load_state_dict(ckpt["model_state"])
@@ -59,7 +80,10 @@ def model_from_checkpoint(ckpt: dict, device) -> SpeedLSTM:
 
 
 def predict_batch(model: nn.Module, ckpt: dict, feats: np.ndarray, device, batch_size: int = 1024) -> np.ndarray:
-    """feats: (N, 15, F) raw features -> (N,) m/s, using ckpt's normalization."""
+    """
+    feats: (N, 15, F) raw features -> (N,) m/s, using ckpt's normalization: the speed,
+    or for a residual checkpoint the correction to add to the geometric speed.
+    """
     model.eval()
     x = (feats - ckpt["feature_mean"]) / ckpt["feature_std"]
     out = []
@@ -68,7 +92,7 @@ def predict_batch(model: nn.Module, ckpt: dict, feats: np.ndarray, device, batch
             xb = torch.from_numpy(x[i:i + batch_size].astype(np.float32)).to(device)
             out.append(model(xb).cpu().numpy())
     pred = np.concatenate(out) * ckpt["target_std"] + ckpt["target_mean"] if out else np.zeros(0)
-    return np.maximum(pred, 0.0)
+    return pred if is_residual(ckpt) else np.maximum(pred, 0.0)
 
 
 def group_errors_kmh(pred_mps: np.ndarray, target_mps: np.ndarray, groups: list[str]) -> pd.DataFrame:
@@ -99,7 +123,7 @@ def group_split(windows: list[dict], val_frac: float, seed: int) -> tuple[list[d
 def finetune(init_checkpoint: str | Path, train_windows: list[dict], val_windows: list[dict], out_dir: str | Path,
              epochs: int = 30, lr: float = 3e-4, weight_decay: float = 0.01, batch_size: int = 256,
              freeze: str = "none", renorm: str = "keep", loss: str = "mse", scratch: bool = False,
-             seed: int = 0, log=print) -> dict:
+             target: str = "speed", seed: int = 0, log=print) -> dict:
     torch.manual_seed(seed)
     np.random.seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -111,6 +135,9 @@ def finetune(init_checkpoint: str | Path, train_windows: list[dict], val_windows
     Xva = np.stack([window_features(w, mode) for w in val_windows]).astype(np.float64)
     yva = np.array([w["target_speed"] for w in val_windows], dtype=np.float64)
     gva = [w["group"] for w in val_windows]
+    residual = target == "residual"
+    btr = np.array([w["base_speed"] for w in train_windows], dtype=np.float64) if residual else np.zeros(len(ytr))
+    bva = np.array([w["base_speed"] for w in val_windows], dtype=np.float64) if residual else np.zeros(len(yva))
 
     if renorm in ("features", "all"):
         flat = Xtr.reshape(-1, Xtr.shape[-1])
@@ -119,10 +146,17 @@ def finetune(init_checkpoint: str | Path, train_windows: list[dict], val_windows
     if renorm == "all":
         ckpt["target_mean"] = float(ytr.mean())
         ckpt["target_std"] = max(float(ytr.std()), 1e-6)
+    if residual:  # the network outputs target - geometric speed
+        ckpt["target"] = "residual"
+        ckpt["target_mean"] = 0.0
+        ckpt["target_std"] = max(float((ytr - btr).std()), 1e-3)
 
     model = SpeedLSTM(input_size=ckpt["input_size"], hidden_size=ckpt["hidden_size"]).to(device)
     if not scratch:
         model.load_state_dict(ckpt["model_state"])
+    if residual:  # start from no correction: the geometric speed itself
+        nn.init.zeros_(model.head[2].weight)
+        nn.init.zeros_(model.head[2].bias)
     if freeze == "lstm":
         for p in model.lstm.parameters():
             p.requires_grad = False
@@ -134,16 +168,16 @@ def finetune(init_checkpoint: str | Path, train_windows: list[dict], val_windows
     crit = nn.HuberLoss(delta=1.0) if loss == "huber" else nn.MSELoss()
 
     xtr_t = torch.from_numpy(((Xtr - ckpt["feature_mean"]) / ckpt["feature_std"]).astype(np.float32))
-    ytr_t = torch.from_numpy(((ytr - ckpt["target_mean"]) / ckpt["target_std"]).astype(np.float32))
+    ytr_t = torch.from_numpy(((ytr - btr - ckpt["target_mean"]) / ckpt["target_std"]).astype(np.float32))
 
     def val_score():
-        g = group_errors_kmh(predict_batch(model, ckpt, Xva, device), yva, gva)
+        g = group_errors_kmh(predict_batch(model, ckpt, Xva, device) + bva, yva, gva)
         return _stats(g["err"].to_numpy())
 
     best = {"epoch": 0, **val_score()}
     log(f"[finetune] {len(train_windows)} train windows ({len({w['group'] for w in train_windows})} cars), "
         f"{len(val_windows)} val windows ({len(set(gva))} cars); mode {mode}, freeze {freeze}, renorm {renorm}, "
-        f"loss {loss}, lr {lr}, scratch {scratch}")
+        f"loss {loss}, lr {lr}, scratch {scratch}, target {target}")
     log(f"[finetune] epoch   0 | val car MAE {best.get('mae', float('nan')):.2f} km/h, bias {best.get('bias', float('nan')):+.2f}")
     best_state = copy.deepcopy(model.state_dict())
     history = [best]
@@ -176,7 +210,7 @@ def finetune(init_checkpoint: str | Path, train_windows: list[dict], val_windows
     ckpt["model_state"] = best_state
     ckpt["finetuned_from"] = str(init_checkpoint)
     ckpt["finetune"] = {"epochs": epochs, "lr": lr, "freeze": freeze, "renorm": renorm, "loss": loss,
-                        "scratch": scratch, "seed": seed, "best_epoch": best["epoch"]}
+                        "scratch": scratch, "target": target, "seed": seed, "best_epoch": best["epoch"]}
     torch.save(ckpt, out_dir / "best.pt")
     (out_dir / "finetune_history.json").write_text(json.dumps(history, indent=2))
     log(f"[finetune] best epoch {best['epoch']}: val car MAE {best['mae']:.2f} km/h -> {out_dir / 'best.pt'}")
@@ -187,7 +221,8 @@ def evaluate_recording(checkpoint, run_dir: str | Path) -> pd.DataFrame:
     """
     Re-predict a prepared Brno run's cached windows (windows.json) with `checkpoint`
     (or a list of checkpoints, whose window predictions are averaged) and return
-    its car_eval rows (valid, matched cars) with a fresh model_kmh.
+    its car_eval rows (valid, matched cars) with a fresh model_kmh. Residual
+    checkpoints' corrections are added to each car's geometric speed (median_kmh).
     """
     from speed_lstm.brno import model_speed_for_matches
 
@@ -197,20 +232,26 @@ def evaluate_recording(checkpoint, run_dir: str | Path) -> pd.DataFrame:
     windows = json.loads((run_dir / "windows.json").read_text())
     matches = pd.read_csv(run_dir / "car_eval.csv")
     speed = np.zeros(len(windows))
+    targets = set()
     if windows:
         feats_by_mode = {}
         for c in checkpoints:
             ckpt = load_checkpoint(c, device)
+            targets.add(ckpt.get("target", "speed"))
             mode = ckpt["mode"]
             if mode not in feats_by_mode:
                 feats_by_mode[mode] = np.stack([window_features(w, mode) for w in windows]).astype(np.float64)
             speed += predict_batch(model_from_checkpoint(ckpt, device), ckpt, feats_by_mode[mode], device)
         speed /= len(checkpoints)
+    if len(targets) > 1:
+        raise ValueError("can't average speed and residual checkpoints")
     preds = pd.DataFrame({"track_id": [w["track_id"] for w in windows],
                           "t_start": [w["timestamps"][0] for w in windows],
                           "t_end": [w["timestamps"][-1] for w in windows],
                           "speed_kmh": speed * 3.6})
     matches["model_kmh"] = model_speed_for_matches(matches, preds)
+    if targets == {"residual"}:
+        matches["model_kmh"] += matches["median_kmh"]
     return matches[matches["valid"] & matches["matched"]].copy()
 
 

@@ -112,6 +112,45 @@ def test_finetune_runs_and_selects_by_val(tmp_path):
     assert res["best"]["mae"] <= res["history"][0]["mae"]
 
 
+def test_residual_finetune_starts_from_geometry_and_scores_on_top_of_it(tmp_path):
+    import json
+    import pandas as pd
+    import torch
+    from speed_lstm import features_v2 as fv2
+    from speed_lstm.finetune import attach_base_speed, evaluate_recording, finetune, group_split, load_checkpoint
+    from speed_lstm.model import SpeedLSTM
+    n = fv2.n_features("3d")
+    m = SpeedLSTM(input_size=n)
+    torch.save({"model_state": m.state_dict(), "mode": "3d", "input_size": n, "hidden_size": m.hidden_size,
+                "n_observations": 16, "max_timestamp_gap": 0.2, "feature_mean": np.zeros(n), "feature_std": np.ones(n),
+                "target_mean": 20.0, "target_std": 5.0}, tmp_path / "init.pt")
+    rng = np.random.default_rng(0)
+    windows, rows = [], []
+    for car in range(20):
+        v = rng.uniform(15, 35)
+        rows.append({"gt_id": car, "valid": True, "matched": True, "gt_kmh": v * 3.6, "track_id": car,
+                     "track_t_first": 0.0, "track_t_last": 4.0, "median_kmh": (v - 2.0) * 3.6})  # geometry 2 m/s slow
+        for k in range(4):
+            t = np.arange(16) * 0.04 + k
+            b3 = np.column_stack([v * t, np.zeros(16), np.full(16, 0.75), np.full((16, 3), [4.5, 1.8, 1.5])])
+            windows.append({"timestamps": t.tolist(), "boxes3d": b3.tolist(), "boxes2d": None, "track_id": car,
+                            "target_speed": v, "group": f"s9:{car}", "recording": "s9"})
+    rec = tmp_path / "runs/brno/s9"
+    rec.mkdir(parents=True)
+    pd.DataFrame(rows).to_csv(rec / "car_eval.csv", index=False)
+    (rec / "windows.json").write_text(json.dumps(windows))
+
+    train, val = group_split(attach_base_speed(windows, tmp_path / "runs/brno"), 0.25, 0)
+    assert all(abs(w["base_speed"] - (w["target_speed"] - 2.0)) < 1e-9 for w in train)
+    res = finetune(tmp_path / "init.pt", train, val, tmp_path / "out", epochs=15, lr=3e-3, target="residual",
+                   log=lambda *_: None)
+    assert abs(res["history"][0]["mae"] - 2.0 * 3.6) < 1e-6        # epoch 0 = geometry alone
+    assert res["best"]["mae"] < res["history"][0]["mae"]
+    assert load_checkpoint(res["checkpoint"])["target"] == "residual"
+    cars = evaluate_recording(res["checkpoint"], rec)
+    assert (cars["model_kmh"] - cars["gt_kmh"]).abs().mean() < 2.0 * 3.6
+
+
 def test_experiment_accepts_long_inline_config(tmp_path):
     import json, subprocess, sys
     from pathlib import Path
