@@ -1,5 +1,191 @@
 [
  {
+  "id": "exp_122_final_RB2_s0",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session0_right",
+   "session1_left",
+   "session1_center",
+   "session1_right",
+   "session2_left",
+   "session2_center",
+   "session2_right",
+   "session3_left",
+   "session3_center",
+   "session3_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "final_RB2_s0",
+   "runs_root": "runs/brno_bottom",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session0_right",
+    "session1_left",
+    "session1_center",
+    "session1_right",
+    "session2_left",
+    "session2_center",
+    "session2_right",
+    "session3_left",
+    "session3_center",
+    "session3_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 60,
+    "lr": 0.001,
+    "batch_size": 32,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "target": "residual",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_123_final_RB2_s1",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session0_right",
+   "session1_left",
+   "session1_center",
+   "session1_right",
+   "session2_left",
+   "session2_center",
+   "session2_right",
+   "session3_left",
+   "session3_center",
+   "session3_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "final_RB2_s1",
+   "runs_root": "runs/brno_bottom",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session0_right",
+    "session1_left",
+    "session1_center",
+    "session1_right",
+    "session2_left",
+    "session2_center",
+    "session2_right",
+    "session3_left",
+    "session3_center",
+    "session3_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 60,
+    "lr": 0.001,
+    "batch_size": 32,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "target": "residual",
+    "seed": 1
+   }
+  }
+ },
+ {
+  "id": "exp_124_final_RB2_s2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session0_right",
+   "session1_left",
+   "session1_center",
+   "session1_right",
+   "session2_left",
+   "session2_center",
+   "session2_right",
+   "session3_left",
+   "session3_center",
+   "session3_right",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "final_RB2_s2",
+   "runs_root": "runs/brno_bottom",
+   "train": [
+    "session0_left",
+    "session0_center",
+    "session0_right",
+    "session1_left",
+    "session1_center",
+    "session1_right",
+    "session2_left",
+    "session2_center",
+    "session2_right",
+    "session3_left",
+    "session3_center",
+    "session3_right"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 60,
+    "lr": 0.001,
+    "batch_size": 32,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "target": "residual",
+    "seed": 2
+   }
+  }
+ },
+ {
+  "id": "exp_125_ens_final_RB2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "config": {
+   "name": "ens_final_RB2",
+   "runs_root": "runs/brno_bottom",
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_122_final_RB2_s0",
+    "exp_123_final_RB2_s1",
+    "exp_124_final_RB2_s2"
+   ]
+  }
+ },
+ {
   "id": "exp_114_cvRB2_hold0_s0",
   "type": "experiment",
   "requires_prepared": [
