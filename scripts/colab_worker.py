@@ -115,7 +115,7 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--project", required=True)
     p.add_argument("--brno", required=True)
-    p.add_argument("--branch", default="video-3d-bbox")
+    p.add_argument("--branch", default="main")
     p.add_argument("--queue", default="experiments/queue.json")
     p.add_argument("--poll", type=int, default=60)
     args = p.parse_args()
