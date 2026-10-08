@@ -15,8 +15,12 @@ Job types:
   {"id": ..., "type": "shell", "cmd": "..."}          -> anything else (run from the repo root)
 
 Jobs wait (neither run nor fail) while they can't run properly: "prepare" jobs and jobs with
-"needs_gpu": true wait for a GPU (YOLO on CPU takes hours per recording), and jobs with
-"requires_prepared": [recordings] wait until those recordings have been prepared.
+"needs_gpu": true wait for a GPU (YOLO on CPU takes hours per recording), jobs with
+"requires_prepared": [recordings] wait until those recordings have windows.json under the job's
+config "runs_root" (default runs/brno), jobs with "requires_done": [job ids] wait until those
+jobs are DONE (ensembles wait for their "ensemble_of" members automatically), and jobs with
+"hold": true never run until the flag is removed (e.g. test-set runs awaiting a CV decision).
+Shell jobs see the worker's paths as $PROJECT and $BRNO.
 """
 
 from __future__ import annotations
@@ -102,12 +106,20 @@ def has_gpu() -> bool:
 
 def blocked(job: dict, args) -> str | None:
     """Why `job` can't run yet, or None."""
+    if job.get("hold"):
+        return "on hold"
     if (job["type"] == "prepare" or job.get("needs_gpu")) and not args.gpu:
         return "no GPU"
-    missing = [r for r in job.get("requires_prepared", [])
-               if not (Path(args.project) / "runs/brno" / r / "windows.json").exists()]
+    cfg = job.get("config") or {}
+    runs_root = Path(args.project) / cfg.get("runs_root", "runs/brno")
+    missing = [r for r in job.get("requires_prepared", []) if not (runs_root / r / "windows.json").exists()]
     if missing:
-        return f"waiting for {missing}"
+        return f"waiting for {missing} in {runs_root.name}"
+    state = Path(args.project) / "runs/worker"
+    deps = [*job.get("requires_done", []), *(cfg.get("ensemble_of") or [])]
+    not_done = [d for d in deps if not (state / d / "DONE").exists()]
+    if not_done:
+        return f"waiting for jobs {not_done}"
     return None
 
 
@@ -121,6 +133,7 @@ def main() -> None:
     args = p.parse_args()
 
     args.gpu = has_gpu()
+    os.environ.update(PROJECT=args.project, BRNO=args.brno)  # for shell jobs
     print(f"[worker] {now()} GPU available: {args.gpu}", flush=True)
     state = Path(args.project) / "runs/worker"
     state.mkdir(parents=True, exist_ok=True)
