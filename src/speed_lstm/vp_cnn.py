@@ -13,12 +13,13 @@ Crop coordinates: a square crop of side `s` centred on the box center (cx, cy); 
 ((u - cx) / (s/2), (v - cy) / (s/2)), so the crop spans [-1, 1]. A homogeneous image VP (x, y, w)
 in those coordinates is ((x - cx w) / (s/2), (y - cy w) / (s/2), w), normalized to unit length.
 
-Training: scripts/train_vp_cnn.py, labels from a recording's calibration (Brno results json).
-A few training cameras means few distinct VP configurations, so training warps each crop with a
-random homography H (rotation, scale, shift, mild perspective) and maps its labels with the same H:
-VPs are points, so the warped crop's VPs are exactly H applied to the original ones. As in deep_vp,
-the warp is applied to a larger context crop and the crop is then re-fitted to the warped vehicle
-box (with jittered edges), so augmented crops are framed like detector crops at test time.
+Training: scripts/train_vp_cnn.py, VP1 labels from the recording's annotated lane dividers and VP2
+labels from its calibration (Brno results json). A few training cameras means few distinct VP
+configurations, so training warps each crop with a random homography H (rotation, mild perspective)
+and maps its labels with the same H: VPs are points, so the warped crop's VPs are exactly H applied
+to the original ones. As in deep_vp, the warp is applied to a larger context crop and the crop is
+then re-fitted to the warped vehicle box with jittered edges (refit_crop), so augmented crops are
+framed like detector crops at test time; that refit is also what varies scale and position.
 """
 
 from __future__ import annotations
@@ -88,14 +89,14 @@ def _pixel_to_crop(size: int, extent: float = 1.0) -> np.ndarray:
     return np.array([[k, 0.0, k / 2.0 - extent], [0.0, k, k / 2.0 - extent], [0.0, 0.0, 1.0]])
 
 
-def random_homography(rng: np.random.Generator, max_rot_deg: float = 15.0, max_log_scale: float = 0.15,
-                      max_shift: float = 0.1, max_persp: float = 0.15) -> np.ndarray:
-    """Random 3x3 homography in crop coordinates: rotation, isotropic scale, shift, then mild perspective."""
+def random_homography(rng: np.random.Generator, max_rot_deg: float = 15.0, max_persp: float = 0.15) -> np.ndarray:
+    """
+    Random 3x3 homography in crop coordinates: rotation, then mild perspective. (Scale and shift are
+    left out: refit_crop re-frames the crop around the warped box, which would undo them.)
+    """
     a = np.radians(rng.uniform(-max_rot_deg, max_rot_deg))
-    s = np.exp(rng.uniform(-max_log_scale, max_log_scale))
-    tx, ty = rng.uniform(-max_shift, max_shift, 2)
     px, py = rng.uniform(-max_persp, max_persp, 2)
-    A = np.array([[s * np.cos(a), -s * np.sin(a), tx], [s * np.sin(a), s * np.cos(a), ty], [0.0, 0.0, 1.0]])
+    A = np.array([[np.cos(a), -np.sin(a), 0.0], [np.sin(a), np.cos(a), 0.0], [0.0, 0.0, 1.0]])
     return np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [px, py, 1.0]]) @ A
 
 
@@ -118,6 +119,14 @@ def refit_crop(H: np.ndarray, box_hw, rng: np.random.Generator | None = None, ji
     side = max(x1 - x0, y1 - y0) * (1.0 + 2.0 * pad)
     R = np.array([[2.0 / side, 0.0, -2.0 * cx / side], [0.0, 2.0 / side, -2.0 * cy / side], [0.0, 0.0, 1.0]])
     return R @ H
+
+
+def within_context(G: np.ndarray, extent: float = CONTEXT) -> bool:
+    """Whether the crop seen through G only uses pixels of a context crop covering [-extent, extent]."""
+    corners = np.array([[-1.0, -1.0, 1.0], [1.0, -1.0, 1.0], [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0]]) @ np.linalg.inv(G).T
+    if np.any(corners[:, 2] <= 0):
+        return False
+    return bool(np.all(np.abs(corners[:, :2] / corners[:, 2:]) <= extent))
 
 
 def render_crop(context_crop: np.ndarray, G: np.ndarray | None = None, size: int = CROP_SIZE,

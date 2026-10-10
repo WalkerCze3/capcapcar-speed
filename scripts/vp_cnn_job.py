@@ -11,7 +11,7 @@ Outputs in <project>/runs/vp_cnn/<name>/:
   <arch>/best.pt, history.json     one training run per --archs entry (scripts/train_vp_cnn.py)
   best.pt, winner.json             the arch with the lowest validation aggregate VP error
   calib/<rec>.json                 automatic calibration (scripts/autocalib_cli.py --compare)
-  eval/<rec>/                      scripts/brno_eval_cli.py run with that calibration
+  eval/<rec>/, eval_ref/<rec>/     scripts/brno_eval_cli.py with that calibration / the dataset's, same detections
   results_<tag>.json / .md         per recording: calibration errors against the dataset's calibration,
                                    and speed errors with the automatic vs the dataset's calibration
 Evaluation reuses each recording's cached detections (<project>/runs/brno/<rec>), so no YOLO runs.
@@ -27,31 +27,28 @@ import json
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "src"))
-from speed_lstm import brno  # noqa: E402
+sys.path[:0] = [str(REPO / "src"), str(REPO / "scripts")]
+from speed_lstm import autocalib, brno  # noqa: E402
+from train_vp_cnn import local_video  # noqa: E402
 
 PY = sys.executable
 
 
-def run(cmd: list[str]) -> None:
-    print("$ " + " ".join(str(c) for c in cmd), flush=True)
-    subprocess.run([str(c) for c in cmd], cwd=REPO, check=True)
-
-
-def copy_video(brno_root: Path, rec: str, cache: Path) -> Path:
-    dst = cache / f"{rec}.avi"
-    if not dst.exists():
-        cache.mkdir(parents=True, exist_ok=True)
-        t0 = time.time()
-        shutil.copy(brno_root / "dataset" / rec / "video.avi", dst)
-        print(f"[video] {rec}: copied {dst.stat().st_size / 1e9:.1f} GB in {time.time() - t0:.0f} s", flush=True)
-    return dst
+def run(cmd: list) -> None:
+    """Run a script; on failure raise with its last stderr line (the exception), which goes in the results."""
+    cmd = [str(c) for c in cmd]
+    print("$ " + " ".join(cmd), flush=True)
+    p = subprocess.run(cmd, cwd=REPO, stderr=subprocess.PIPE, text=True)
+    sys.stderr.write(p.stderr)
+    sys.stderr.flush()
+    if p.returncode:
+        last = (p.stderr.strip().splitlines() or [""])[-1]
+        raise RuntimeError(f"{Path(cmd[1]).name} exited {p.returncode}: {last}")
 
 
 def distance_error_pct(gt: dict, calib: dict) -> float:
@@ -66,18 +63,25 @@ def speed_errors(summary: dict) -> dict:
 
 
 def train(args, out: Path) -> None:
-    scores = {}
+    scores, failed = {}, {}
     for arch in args.archs:
-        run([PY, "scripts/train_vp_cnn.py", "--dataset-root", args.brno, "--prepared-root", args.prepared,
-             "--calib-name", args.calib_name, "--train", *args.train, "--val", *args.val, "--arch", arch,
-             "--epochs", args.epochs, "--cache-dir", args.crop_cache, "--video-cache", args.video_cache,
-             "--out", out / arch])
+        try:
+            run([PY, "scripts/train_vp_cnn.py", "--dataset-root", args.brno, "--prepared-root", args.prepared,
+                 "--calib-name", args.calib_name, "--train", *args.train, "--val", *args.val, "--arch", arch,
+                 "--epochs", args.epochs, "--cache-dir", args.crop_cache, "--video-cache", args.video_cache,
+                 "--out", out / arch])
+        except RuntimeError as e:  # train the other archs anyway
+            print(f"[train] {arch} failed: {e}", flush=True)
+            failed[arch] = str(e)
+            continue
         history = json.loads((out / arch / "history.json").read_text())
         best = min(history, key=lambda h: h["score"])
         scores[arch] = {"score_deg": best["score"], "epoch": best["epoch"], "val": best["val"]}
+    if not scores:
+        raise SystemExit(f"Every arch failed: {failed}")
     winner = min(scores, key=lambda a: scores[a]["score_deg"])
     shutil.copy(out / winner / "best.pt", out / "best.pt")
-    (out / "winner.json").write_text(json.dumps({"winner": winner, "runs": scores}, indent=2))
+    (out / "winner.json").write_text(json.dumps({"winner": winner, "runs": scores, "failed": failed}, indent=2))
     print(f"[train] winner {winner}: " + ", ".join(f"{a} {s['score_deg']:.3f} deg" for a, s in scores.items()), flush=True)
 
 
@@ -85,30 +89,38 @@ def evaluate(args, out: Path, rec: str) -> dict:
     brno_root, prepared = Path(args.brno), Path(args.prepared) / rec
     session = brno_root / "dataset" / rec
     ref_path = brno_root / "results" / rec / args.calib_name
-    manual = json.loads((prepared / "summary.json").read_text())
-    step = int(manual["frame_step"])
-    video = copy_video(brno_root, rec, Path(args.video_cache))
+    step = int(json.loads((prepared / "summary.json").read_text())["frame_step"])
+    video, _ = local_video(session / "video.avi", args.video_cache)
     calib_path = out / "calib" / f"{rec}.json"
+    score = ["--checkpoint", args.checkpoint, "--detections", prepared / "detections.csv", "--frame-step", step,
+             "--max-seconds", 1e9, "--video", video]
     try:
         run([PY, "scripts/autocalib_cli.py", "--video", video, "--vp-model", out / "best.pt",
              "--detections", prepared / "detections.csv", "--frame-step", step,
              "--mask", session / "video_mask.png", "--compare", ref_path, "--out", calib_path])
-        run([PY, "scripts/brno_eval_cli.py", "--session-dir", session, "--calib", calib_path,
-             "--checkpoint", args.checkpoint, "--detections", prepared / "detections.csv", "--frame-step", step,
-             "--max-seconds", 1e9, "--video", video, "--out-dir", out / "eval" / rec])
+        run([PY, "scripts/brno_eval_cli.py", "--session-dir", session, "--calib", calib_path, *score,
+             "--out-dir", out / "eval" / rec])
+        # The dataset's calibration through the same code and detections, so the comparison is like for like.
+        run([PY, "scripts/brno_eval_cli.py", "--session-dir", session, "--calib", ref_path, *score,
+             "--out-dir", out / "eval_ref" / rec])
     finally:
-        video.unlink(missing_ok=True)
+        if video.parent == Path(args.video_cache):
+            video.unlink(missing_ok=True)
     auto = json.loads(calib_path.read_text())
-    auto_summary = json.loads((out / "eval" / rec / "summary.json").read_text())
+    summaries = {k: json.loads((out / d / rec / "summary.json").read_text()) for k, d in (("auto", "eval"), ("manual", "eval_ref"))}
     gt = brno.load_gt(session / "gt_data.pkl")
     ref_calib, _ = brno.load_system(ref_path)
     auto_calib, _ = brno.load_system(calib_path)
+    pp = np.asarray(auto_calib["pp"], dtype=np.float64)
+    a, b = autocalib.to_direction(np.stack([np.append(auto_calib["vp1"], 1.0), brno.annotated_vp1(gt)]), pp,
+                                  2.0 * float(np.hypot(*pp)))
     return {
         "recording": rec, "reliable": auto.get("reliable"), "compare": auto.get("compare", {}),
+        "vp1_vs_lanes_deg": float(np.degrees(np.arccos(np.clip(abs(a @ b), 0.0, 1.0)))),
         "quality": auto.get("quality", {}),
         "distance_err_pct": {"auto": distance_error_pct(gt, auto_calib), "manual": distance_error_pct(gt, ref_calib)},
-        "mean_err_kmh": {"auto": speed_errors(auto_summary), "manual": speed_errors(manual)},
-        "matched": {"auto": auto_summary.get("matched"), "manual": manual.get("matched")},
+        "mean_err_kmh": {k: speed_errors(v) for k, v in summaries.items()},
+        "matched": {k: v.get("matched") for k, v in summaries.items()},
     }
 
 
@@ -118,13 +130,16 @@ def fmt(v, spec=".2f") -> str:
 
 def write_results(out: Path, tag: str, rows: list[dict], failed: dict) -> None:
     (out / f"results_{tag}.json").write_text(json.dumps({"recordings": rows, "failed": failed}, indent=2))
-    lines = ["| recording | reliable | VP1 err (deg) | VP2 err (deg) | focal err (%) | camera height err (%) "
-             "| distance err auto / manual (%) | geometric speed err auto / manual (km/h) "
+    lines = ["Errors are against the dataset's calibration (system file) unless noted; 'manual' rows score that "
+             "calibration with the same code and detections.", "",
+             "| recording | reliable | VP1 err vs lanes / vs calib (deg) | VP2 err (deg) | focal err (%) "
+             "| camera height err (%) | distance err auto / manual (%) | geometric speed err auto / manual (km/h) "
              "| LSTM speed err auto / manual (km/h) |",
              "|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         c, d, e = r["compare"], r["distance_err_pct"], r["mean_err_kmh"]
-        lines.append(f"| {r['recording']} | {r['reliable']} | {fmt(c.get('vp1_angle_deg'))} | {fmt(c.get('vp2_angle_deg'))} "
+        lines.append(f"| {r['recording']} | {r['reliable']} | {fmt(r['vp1_vs_lanes_deg'])} / {fmt(c.get('vp1_angle_deg'))} "
+                     f"| {fmt(c.get('vp2_angle_deg'))} "
                      f"| {fmt(c.get('focal_err_pct'), '+.1f')} | {fmt(c.get('camera_height_err_pct'), '+.1f')} "
                      f"| {fmt(d['auto'])} / {fmt(d['manual'])} "
                      f"| {fmt(e['auto']['geometry_full'])} / {fmt(e['manual']['geometry_full'])} "
@@ -177,7 +192,7 @@ def main() -> None:
             rows.append(evaluate(args, out, rec))
         except Exception as e:  # keep scoring the other recordings; report this one
             print(f"[eval] {rec} failed: {e!r}", flush=True)
-            failed[rec] = repr(e)[:200]
+            failed[rec] = str(e)[:300]
     write_results(out, args.tag, rows, failed)
     if not rows:
         raise SystemExit("Evaluation failed on every recording")

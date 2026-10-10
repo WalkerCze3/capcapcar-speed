@@ -232,7 +232,8 @@ more epochs). Seed-to-seed spread is ~±0.1 km/h, so compare seed triples, not s
 The output is a BrnoCompSpeed-style system file, so it is scored exactly like the dataset's calibrations:
 
 ```bash
-# train the VP CNN on training sessions only (labels: each recording's calibration file)
+# train the VP CNN on training sessions only (labels: VP1 from each recording's annotated lane dividers,
+# VP2 from its calibration file)
 python scripts/train_vp_cnn.py --dataset-root .../2016-ITS-BrnoCompSpeed --prepared-root runs/brno \
     --train session0_center session1_center session2_center --val session3_center --out runs/vp_cnn
 # calibrate a test recording automatically and compare with the dataset's calibration
@@ -248,13 +249,15 @@ python scripts/brno_eval_cli.py --session-dir .../dataset/session4_center \
 
 The CNN (ResNet-18 from ImageNet weights by default, or a small from-scratch net with `--arch small`) sees
 only a handful of training cameras, so each training crop is also warped by a random homography with
-its VP labels mapped by the same homography, which is exact because VPs are points.
+its VP labels mapped by the same homography, which is exact because VPs are points. As in deep_vp, the
+warp is applied to a larger context crop and the crop is then re-fitted to the warped vehicle box.
 
-On Colab, `scripts/vp_cnn_job.py` does all of the above in one job: it trains each `--archs` entry, keeps
-the best on validation, then calibrates every `--val` (or `--eval`) recording and scores it with
-`brno_eval_cli.py`, writing `results_<tag>.md` (calibration errors, and speed errors with the automatic
-vs the dataset's calibration) to `runs/vp_cnn/<name>/` in the project folder. Its queue entry is
-`vp_cnn_v1` in `experiments/queue.json`; the test-session run `vp_cnn_v1_test` is on hold.
+On Colab, `scripts/vp_cnn_job.py` does all of the above: it trains each `--archs` entry, keeps the best
+on validation, then calibrates every `--val` (or `--eval`) recording and scores it with `brno_eval_cli.py`,
+next to the dataset's own calibration scored the same way, writing `results_<tag>.md` to
+`runs/vp_cnn/<name>/` in the project folder. `experiments/queue.json` runs it as three jobs writing to
+`runs/vp_cnn/vp_cnn_v1`: `vp_cnn_v1_train` (sessions 0-2, validated on session 3), `vp_cnn_v1_val`
+(session 3, `results_val.md`) and `vp_cnn_v1_test` (sessions 4-6, on hold until the setup is chosen).
 
 `video_speed_cli.py --vp-model runs/vp_cnn/best.pt` (no `--calib`) does the same on any video and
 writes `auto_calib.json` next to its outputs; the file's `reliable` flag and `quality` say whether

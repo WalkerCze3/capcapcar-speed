@@ -154,14 +154,26 @@ def camera_height_unit(vp1, vp2, pp) -> float:
     return abs(float(np.dot(road_plane[:3], np.append(np.asarray(pp, dtype=np.float64)[:2], 0.0)) + road_plane[3]))
 
 
-def sample_car_boxes(dets: pd.DataFrame, img_size: tuple[int, int], every: int = 5, max_boxes: int = 400,
-                     border_margin: float = 3.0, seed: int = 0) -> pd.DataFrame:
-    """Unclipped car boxes, every `every`-th frame of each track, at most `max_boxes` (random subset)."""
+def sample_car_boxes(dets: pd.DataFrame, img_size: tuple[int, int], per_track: int = 5, max_boxes: int = 400,
+                     min_travel_px: float = 40.0, border_margin: float = 3.0, seed: int = 0) -> pd.DataFrame:
+    """
+    Unclipped car boxes from moving tracks: up to `per_track` boxes spread evenly over each track
+    whose bottom-center travelled at least `min_travel_px` (a parked car would otherwise supply most
+    of the sample), then at most `max_boxes` (random subset).
+    """
     from speed_lstm.video import _drop_truncated
 
     cars = _drop_truncated(dets[dets["cls"] == "car"], img_size[0], img_size[1], border_margin)
     cars = cars.sort_values(["track_id", "frame"])
-    cars = cars[cars.groupby("track_id").cumcount() % every == 0]
+    u = (cars["xmin"] + cars["xmax"]) / 2.0
+    g = pd.DataFrame({"track_id": cars["track_id"], "u": u, "v": cars["ymax"]}).groupby("track_id")
+    travel = np.hypot(g["u"].max() - g["u"].min(), g["v"].max() - g["v"].min())
+    cars = cars[cars["track_id"].isin(travel.index[travel >= min_travel_px])]
+    picks = []
+    for _, t in cars.groupby("track_id", sort=False):
+        idx = np.unique(np.linspace(0, len(t) - 1, min(per_track, len(t))).round().astype(int))
+        picks.append(t.iloc[idx])
+    cars = pd.concat(picks) if picks else cars.iloc[:0]
     if len(cars) > max_boxes:
         cars = cars.sample(max_boxes, random_state=seed).sort_values(["track_id", "frame"])
     return cars

@@ -18,9 +18,9 @@ crop is warped by a random homography with its labels mapped exactly (vp_cnn.ran
 on top of mirroring and brightness / contrast jitter. Crops are cached with extra context around
 them so the warp has real pixels to show, and re-fitted to the warped vehicle box afterwards.
 
-VP1 labels come from the recording's annotated along-road lines (brno.annotated_vp1) rather than its
+VP1 labels come from the recording's annotated lane dividers (brno.annotated_vp1) rather than its
 calibration file, whose VP1 is 3-4 degrees off the road on session1_center / _right; VP2 labels come
-from the calibration file.
+from the calibration file (--vp1-label calib takes both from the calibration).
 """
 
 from __future__ import annotations
@@ -41,24 +41,32 @@ from speed_lstm import autocalib, brno  # noqa: E402
 from speed_lstm.vp_cnn import (CONTEXT, CROP_PAD, CROP_SIZE, CropGeom, VPNet, angle_deg,  # noqa: E402
                                crop_dir_to_vp, direction_loss, extract_crops, flip_dir, random_homography,
                                refit_crop, render_crop, sample_crop_boxes, to_tensor, transform_dirs,
-                               vp_to_crop_dir)
+                               vp_to_crop_dir, within_context)
 
 DEFAULT_LR = {"small": 1e-3, "resnet18": 3e-4}
+CACHE_VERSION = 2  # bump when crop sampling or extraction changes
 
 
 def local_video(src: Path, cache_dir: str | None) -> tuple[Path, bool]:
     """
-    (path to read, whether this call made a copy). Reading a multi-GB AVI straight off a Drive
+    (path to read, whether this call made the copy). Reading a multi-GB AVI straight off a Drive
     mount can time out in OpenCV, so with a cache dir the video is copied to local disk first.
+    A copy is only reused when it is complete (same size); it is written under a .part name and
+    renamed when done, so an interrupted copy is never mistaken for the video.
     """
     if not cache_dir:
         return src, False
     dst = Path(cache_dir) / f"{src.parent.name}.avi"
-    if dst.exists():
+    if dst.exists() and dst.stat().st_size == src.stat().st_size:
         return dst, False
     dst.parent.mkdir(parents=True, exist_ok=True)
+    part = dst.with_name(dst.name + ".part")
     t0 = time.time()
-    shutil.copy(src, dst)
+    try:
+        shutil.copyfile(src, part)
+        part.replace(dst)
+    finally:
+        part.unlink(missing_ok=True)
     print(f"[video] copied {src} to {dst} ({dst.stat().st_size / 1e9:.1f} GB, {time.time() - t0:.0f} s)", flush=True)
     return dst, True
 
@@ -88,18 +96,24 @@ def load_recording(name: str, args) -> dict:
     Crops are cached as <cache-dir>/<name>_e<every>_n<max>_c<context>.npz; labels are recomputed on load.
     """
     session = Path(args.dataset_root) / "dataset" / name
-    cache = Path(args.cache_dir or Path(args.out) / "crops") / f"{name}_e{args.every}_n{args.max_crops}_c{CONTEXT:g}.npz"
-    if cache.exists():
-        z = np.load(cache)
+    prepared = Path(args.prepared_root) / name
+    summary = json.loads((prepared / "summary.json").read_text()) if (prepared / "summary.json").exists() else {}
+    step = int(summary.get("frame_step", args.frame_step))
+    # Everything the cached crops depend on; a cache made differently is rebuilt, not reused.
+    meta = {"version": CACHE_VERSION, "every": args.every, "max_crops": args.max_crops, "frame_step": step,
+            "detections_bytes": (prepared / "detections.csv").stat().st_size, "crop_size": CROP_SIZE,
+            "crop_pad": CROP_PAD, "context": CONTEXT}
+    cache = Path(args.cache_dir or Path(args.out) / "crops") / f"{name}.npz"
+    z = np.load(cache) if cache.exists() else None
+    if z is not None and "meta" in z.files and json.loads(str(z["meta"])) == meta:
         data = {"crops": decode_crops(z), "geoms": z["geoms"], "box_hw": z["box_hw"]}
         print(f"[data] {name}: {len(data['crops'])} cached crops from {cache}", flush=True)
     else:
+        if z is not None:
+            print(f"[data] {name}: cache {cache} was made with other settings; rebuilding", flush=True)
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from brno_eval_cli import mask_filter
 
-        prepared = Path(args.prepared_root) / name
-        summary = json.loads((prepared / "summary.json").read_text()) if (prepared / "summary.json").exists() else {}
-        step = int(summary.get("frame_step", args.frame_step))
         dets = mask_filter(pd.read_csv(prepared / "detections.csv"), session / "video_mask.png")
         boxes = sample_crop_boxes(dets, (brno.WIDTH, brno.HEIGHT), every=args.every, max_crops=args.max_crops)
         video, copied = local_video(session / "video.avi", args.video_cache)
@@ -109,13 +123,16 @@ def load_recording(name: str, args) -> dict:
         finally:
             if copied:
                 video.unlink()
+        if len(kept) < len(boxes):
+            raise RuntimeError(f"{name}: the video ended before {len(boxes) - len(kept)} of {len(boxes)} sampled boxes "
+                               f"(wrong frame step, or a truncated video?); not caching")
         geo = np.array([[g.cx, g.cy, g.side] for g in geoms]).reshape(-1, 3)
         box_hw = (np.stack([(kept["xmax"] - kept["xmin"]).to_numpy(), (kept["ymax"] - kept["ymin"]).to_numpy()], axis=1)
                   / geo[:, 2:3]) if len(kept) else np.zeros((0, 2))
         data = {"crops": crops, "geoms": geo, "box_hw": box_hw.astype(np.float64)}
         cache.parent.mkdir(parents=True, exist_ok=True)
         tmp = cache.with_name(cache.stem + ".tmp.npz")
-        np.savez(tmp, geoms=geo, box_hw=data["box_hw"], **encode_crops(crops))
+        np.savez(tmp, geoms=geo, box_hw=data["box_hw"], meta=np.array(json.dumps(meta)), **encode_crops(crops))
         tmp.replace(cache)
         data["crops"] = decode_crops(np.load(cache))  # train on exactly what a cached rerun would see
         print(f"[data] {name}: {len(crops)} crops of {len(dets)} masked detections (frame step {step}, "
@@ -150,7 +167,12 @@ def augment(context: np.ndarray, labels: np.ndarray, box_hw: np.ndarray, rng: np
         if rng.random() < 0.5:
             c = c[:, ::-1]
             y[i] = flip_dir(y[i])
-        G = refit_crop(random_homography(rng), box_hw[i], rng) if geometric else np.eye(3)
+        G = np.eye(3)
+        for _ in range(10 if geometric else 0):  # warps that would need pixels beyond the context are redrawn
+            cand = refit_crop(random_homography(rng), box_hw[i], rng)
+            if within_context(cand):
+                G = cand
+                break
         x[i] = render_crop(np.ascontiguousarray(c), G)
         y[i] = transform_dirs(y[i], G)
     t = to_tensor(x)
