@@ -216,6 +216,41 @@ What mattered: keep the I-24 feature/target normalization (refitting it, freezin
 head-only, or training from scratch were all worse), and enough optimizer steps (batch 64 or
 more epochs). Seed-to-seed spread is ~±0.1 km/h, so compare seed triples, not single runs.
 
+#### Automatic calibration (no manual calibration)
+
+`speed_lstm/autocalib.py` builds P from the traffic itself, so a new camera needs no `--calib`:
+
+1. **VP1** (along the road) from the lines that tracked box bottom-centers move along (RANSAC intersection).
+2. **VP1 / VP2 per vehicle** from a CNN on vehicle crops (`speed_lstm/vp_cnn.py`, after Kocur and
+   Ftáčnik 2021, [deep_vp](https://github.com/kocurvik/deep_vp)), aggregated robustly on the Gaussian
+   sphere. VP1 is taken from the tracks or the CNN, whichever fits the track lines better; VP2 always
+   comes from the CNN.
+3. **Focal length and road plane** from VP1, VP2 and the image center (`brno.compute_camera_calibration`).
+4. **Scale** from car size: the value at which cars lifted with `lift3d` come out the size of
+   `DIM_PRIORS["car"]` (4.6 × 1.85 × 1.55 m).
+
+The output is a BrnoCompSpeed-style system file, so it is scored exactly like the dataset's calibrations:
+
+```bash
+# train the VP CNN on training sessions only (labels: each recording's calibration file)
+python scripts/train_vp_cnn.py --dataset-root .../2016-ITS-BrnoCompSpeed --prepared-root runs/brno \
+    --train session0_center session1_center session2_center --val session3_center --out runs/vp_cnn
+# calibrate a test recording automatically and compare with the dataset's calibration
+python scripts/autocalib_cli.py --video .../dataset/session4_center/video.avi --vp-model runs/vp_cnn/best.pt \
+    --detections runs/brno/session4_center/detections.csv --frame-step 2 \
+    --mask .../dataset/session4_center/video_mask.png --out runs/autocalib/session4_center.json \
+    --compare .../results/session4_center/system_dubska_optimal_calib.json
+# score speeds with it
+python scripts/brno_eval_cli.py --session-dir .../dataset/session4_center \
+    --calib runs/autocalib/session4_center.json --checkpoint runs/v2/3d/best.pt \
+    --detections runs/brno/session4_center/detections.csv --out-dir runs/brno_auto/session4_center
+```
+
+`video_speed_cli.py --vp-model runs/vp_cnn/best.pt` (no `--calib`) does the same on any video and
+writes `auto_calib.json` next to its outputs; the file's `reliable` flag and `quality` say whether
+the calibration passed its checks (enough straight tracks, VP agreement, scale stable across halves
+of the cars). Untested on real video so far: the tests use a synthetic camera.
+
 ## What's NOT in this scaffold (on purpose)
 
 - No detection/tracking for the v1 `speedmodel/` path — it assumes trajectory CSVs already
