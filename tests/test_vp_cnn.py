@@ -71,3 +71,61 @@ def test_predictor_round_trip(tmp_path):
     # With flip TTA each direction is the average of the crop and its mirror, mapped back consistently.
     d = pred.predict_dirs(crops)
     assert np.allclose(np.linalg.norm(d, axis=-1), 1.0)
+
+
+def test_homography_augmentation_maps_points_exactly():
+    cv2 = pytest.importorskip("cv2")
+    size = 128
+    crop = np.zeros((size, size, 3), dtype=np.uint8)
+    cv2.circle(crop, (80, 40), 4, (255, 255, 255), -1)
+    T = vp_cnn._pixel_to_crop(size)
+    p = T @ np.array([80.0, 40.0, 1.0])
+    rng = np.random.default_rng(3)
+    for _ in range(5):
+        H = vp_cnn.random_homography(rng)
+        warped = vp_cnn.warp_crop(crop, H)
+        ys, xs = np.nonzero(warped[..., 0] > 0)
+        w = warped[ys, xs, 0].astype(np.float64)
+        seen = T @ np.array([np.average(xs, weights=w), np.average(ys, weights=w), 1.0])
+        expected = vp_cnn.transform_dirs(p, H)
+        assert np.allclose(seen[:2], expected[:2] / expected[2], atol=0.02)
+
+
+def test_homography_keeps_vps_at_infinity_consistent():
+    d = np.array([[1.0, 0.2, 0.0], [0.3, -0.4, 0.8]])
+    H = vp_cnn.random_homography(np.random.default_rng(0))
+    back = vp_cnn.transform_dirs(vp_cnn.transform_dirs(d, H), np.linalg.inv(H))
+    assert np.allclose(np.abs(np.sum(back * d / np.linalg.norm(d, axis=1, keepdims=True), axis=1)), 1.0)
+
+
+def test_crops_come_from_the_frames_ultralytics_kept(tmp_path):
+    cv2 = pytest.importorskip("cv2")
+    import pandas as pd
+
+    path = str(tmp_path / "v.avi")
+    vw = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"MJPG"), 25, (160, 120))
+    if not vw.isOpened():
+        pytest.skip("no MJPG writer")
+    for i in range(12):
+        vw.write(np.full((120, 160, 3), 20 * i, dtype=np.uint8))
+    vw.release()
+    boxes = pd.DataFrame({"frame": [0, 1, 2, 3], "track_id": 1, "xmin": 60.0, "ymin": 40.0, "xmax": 100.0, "ymax": 80.0})
+    crops, geoms, kept = vp_cnn.extract_crops(path, boxes, frame_step=2, size=32)
+    assert len(crops) == 4 and len(kept) == 4
+    # vid_stride=2 keeps decoded frames 1, 3, 5, 7.
+    assert np.allclose([c.mean() for c in crops], [20, 60, 100, 140], atol=4)
+
+
+def test_resnet_checkpoint_round_trip(tmp_path):
+    pytest.importorskip("torchvision")
+    model = vp_cnn.VPNet(arch="resnet18")
+    path = tmp_path / "vp.pt"
+    torch.save({"model": model.state_dict(), "arch": "resnet18", "crop_size": 64, "crop_pad": 0.15}, path)
+    pred = vp_cnn.VPPredictor(str(path), device="cpu")
+    crops = np.random.default_rng(0).integers(0, 255, (3, 64, 64, 3), dtype=np.uint8)
+    d = pred.predict_dirs(crops)
+    assert d.shape == (3, 2, 3) and np.allclose(np.linalg.norm(d, axis=-1), 1.0)
+    model.eval()
+    with torch.no_grad():
+        ref = model(vp_cnn.to_tensor(crops)).numpy()
+    assert np.allclose(np.abs(np.sum(pred.predict_dirs(crops, flip_tta=False) * ref, axis=-1)), 1.0, atol=1e-5)

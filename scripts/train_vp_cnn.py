@@ -12,13 +12,19 @@ with that run's frame step), so no detector runs here; crops are cut from the vi
 Never put the test sessions (4-6) in --train or --val: speed is scored on them later with the VPs
 this model predicts. Validation reports the median per-crop angle error and the error of the
 recording-level aggregate (what autocalib actually uses); the best epoch is picked on the latter.
+
+With few training cameras the network could memorise their few VP configurations, so each training
+crop is warped by a random homography with its labels mapped exactly (vp_cnn.random_homography),
+on top of mirroring and brightness / contrast jitter.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -27,15 +33,36 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from speed_lstm import autocalib, brno  # noqa: E402
-from speed_lstm.vp_cnn import (CROP_PAD, CROP_SIZE, VPNet, angle_deg, direction_loss, extract_crops,  # noqa: E402
-                               flip_dir, sample_crop_boxes, to_tensor, vp_to_crop_dir)
+from speed_lstm.vp_cnn import (CROP_PAD, CROP_SIZE, CropGeom, VPNet, angle_deg, crop_dir_to_vp,  # noqa: E402
+                               direction_loss, extract_crops, flip_dir, random_homography, sample_crop_boxes,
+                               to_tensor, transform_dirs, vp_to_crop_dir, warp_crop)
+
+DEFAULT_LR = {"small": 1e-3, "resnet18": 3e-4}
+
+
+def local_video(src: Path, cache_dir: str | None) -> tuple[Path, bool]:
+    """
+    (path to read, whether this call made a copy). Reading a multi-GB AVI straight off a Drive
+    mount can time out in OpenCV, so with a cache dir the video is copied to local disk first.
+    """
+    if not cache_dir:
+        return src, False
+    dst = Path(cache_dir) / f"{src.parent.name}.avi"
+    if dst.exists():
+        return dst, False
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    t0 = time.time()
+    shutil.copy(src, dst)
+    print(f"[video] copied {src} to {dst} ({dst.stat().st_size / 1e9:.1f} GB, {time.time() - t0:.0f} s)", flush=True)
+    return dst, True
 
 
 def load_recording(name: str, args) -> dict:
-    """Crops + crop-coordinate VP labels for one recording, cached under <out>/crops/<name>.npz."""
-    cache = Path(args.out) / "crops" / f"{name}.npz"
+    """Crops + crop-coordinate VP labels for one recording, cached as <cache-dir>/<name>_e<every>_n<max>.npz."""
+    cache = Path(args.cache_dir or Path(args.out) / "crops") / f"{name}_e{args.every}_n{args.max_crops}.npz"
     if cache.exists():
         z = np.load(cache)
+        print(f"[data] {name}: {len(z['crops'])} cached crops from {cache}", flush=True)
         return {k: z[k] for k in z.files}
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -48,34 +75,48 @@ def load_recording(name: str, args) -> dict:
     step = int(summary.get("frame_step", args.frame_step))
     dets = mask_filter(pd.read_csv(prepared / "detections.csv"), session / "video_mask.png")
     boxes = sample_crop_boxes(dets, (brno.WIDTH, brno.HEIGHT), every=args.every, max_crops=args.max_crops)
-    crops, geoms, _ = extract_crops(session / "video.avi", boxes, step, CROP_SIZE, CROP_PAD)
+    video, copied = local_video(session / "video.avi", args.video_cache)
+    t0 = time.time()
+    try:
+        crops, geoms, _ = extract_crops(video, boxes, step, CROP_SIZE, CROP_PAD)
+    finally:
+        if copied:
+            video.unlink()
     vp1, vp2 = (np.append(np.asarray(calib[k], dtype=np.float64), 1.0) for k in ("vp1", "vp2"))
     labels = np.array([[vp_to_crop_dir(vp1, g), vp_to_crop_dir(vp2, g)] for g in geoms]).reshape(-1, 2, 3)
     geo = np.array([[g.cx, g.cy, g.side] for g in geoms]).reshape(-1, 3)
     data = {"crops": crops, "labels": labels.astype(np.float32), "geoms": geo,
             "vp1": vp1, "vp2": vp2, "pp": np.asarray(calib["pp"], dtype=np.float64)}
     cache.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(cache, **data)
-    print(f"[data] {name}: {len(crops)} crops (frame step {step})")
+    tmp = cache.with_name(cache.stem + ".tmp.npz")
+    np.savez_compressed(tmp, **data)
+    tmp.replace(cache)
+    print(f"[data] {name}: {len(crops)} crops of {len(dets)} masked detections (frame step {step}, "
+          f"{time.time() - t0:.0f} s) -> {cache}", flush=True)
     return data
 
 
-def augment(x: torch.Tensor, y: torch.Tensor, rng: np.random.Generator) -> tuple[torch.Tensor, torch.Tensor]:
-    """Random horizontal flip (labels mirrored) and brightness / contrast jitter."""
-    flip = torch.from_numpy(rng.random(len(x)) < 0.5)
-    x = x.clone()
-    y = y.clone()
-    x[flip] = torch.flip(x[flip], dims=[3])
-    y[flip] = torch.from_numpy(flip_dir(y[flip].numpy())).float()
-    gain = torch.from_numpy(rng.uniform(0.7, 1.3, (len(x), 1, 1, 1))).float()
-    bias = torch.from_numpy(rng.uniform(-0.1, 0.1, (len(x), 1, 1, 1))).float()
-    return (x * gain + bias).clamp(0.0, 1.0), y
+def augment(crops: np.ndarray, labels: np.ndarray, rng: np.random.Generator,
+            geometric: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
+    """Mirror, random homography (labels mapped exactly), brightness / contrast jitter."""
+    x = crops.copy()
+    y = labels.astype(np.float64)
+    for i in range(len(x)):
+        if rng.random() < 0.5:
+            x[i] = x[i, :, ::-1]
+            y[i] = flip_dir(y[i])
+        if geometric:
+            H = random_homography(rng)
+            x[i] = warp_crop(x[i], H)
+            y[i] = transform_dirs(y[i], H)
+    t = to_tensor(x)
+    gain = torch.from_numpy(rng.uniform(0.7, 1.3, (len(t), 1, 1, 1))).float()
+    bias = torch.from_numpy(rng.uniform(-0.1, 0.1, (len(t), 1, 1, 1))).float()
+    return (t * gain + bias).clamp(0.0, 1.0), torch.from_numpy(y).float()
 
 
 @torch.no_grad()
 def evaluate(model, recs: dict[str, dict], device) -> dict:
-    from speed_lstm.vp_cnn import CropGeom, crop_dir_to_vp
-
     model.eval()
     out = {}
     for name, r in recs.items():
@@ -109,10 +150,15 @@ def main() -> None:
     p.add_argument("--frame-step", type=int, default=2, help="Used when a recording has no summary.json")
     p.add_argument("--every", type=int, default=5, help="Crop every n-th detection of a track")
     p.add_argument("--max-crops", type=int, default=3000, help="Per recording")
+    p.add_argument("--cache-dir", default=None, help="Crop cache (default <out>/crops); reused across runs")
+    p.add_argument("--video-cache", default=None, help="Copy each video here before cropping (e.g. off a Drive mount)")
+    p.add_argument("--arch", choices=["small", "resnet18"], default="resnet18")
+    p.add_argument("--no-pretrained", action="store_true", help="resnet18 from random weights instead of ImageNet")
+    p.add_argument("--no-geometric-aug", action="store_true", help="Only mirror + colour jitter")
     p.add_argument("--epochs", type=int, default=30)
     p.add_argument("--batch-size", type=int, default=64)
-    p.add_argument("--lr", type=float, default=1e-3)
-    p.add_argument("--width", type=int, default=32)
+    p.add_argument("--lr", type=float, default=None, help=f"Default per arch: {DEFAULT_LR}")
+    p.add_argument("--width", type=int, default=32, help="Channels of the small arch")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--device", default=None)
     p.add_argument("--out", required=True)
@@ -128,24 +174,30 @@ def main() -> None:
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    lr = args.lr or DEFAULT_LR[args.arch]
 
-    train = [load_recording(n, args) for n in args.train]
-    val = {n: load_recording(n, args) for n in args.val}
+    train = [r for r in (load_recording(n, args) for n in args.train) if len(r["crops"])]
+    val = {n: r for n, r in ((n, load_recording(n, args)) for n in args.val) if len(r["crops"])}
+    if not train or not val:
+        raise SystemExit("No crops to train or validate on")
     X = np.concatenate([r["crops"] for r in train])
-    Y = torch.from_numpy(np.concatenate([r["labels"] for r in train])).float()
-    print(f"[data] {len(X)} training crops from {len(train)} recordings; validating on {list(val)}")
+    Y = np.concatenate([r["labels"] for r in train])
+    print(f"[data] {len(X)} training crops from {len(train)} recordings; validating on {list(val)}", flush=True)
 
-    model = VPNet(args.width).to(device)
-    opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
+    model = VPNet(args.width, args.arch, pretrained=not args.no_pretrained).to(device)
+    opt = torch.optim.AdamW(model.parameters(), lr=lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
+    print(f"[train] {args.arch} ({'random init' if args.no_pretrained or args.arch == 'small' else 'ImageNet init'}), "
+          f"lr {lr:g}, {args.epochs} epochs on {device}", flush=True)
     best, history = float("inf"), []
     for epoch in range(1, args.epochs + 1):
+        t0 = time.time()
         model.train()
         order = rng.permutation(len(X))
         losses = []
         for i in range(0, len(order), args.batch_size):
-            idx = order[i:i + args.batch_size]
-            x, y = augment(to_tensor(X[idx]), Y[idx], rng)
+            idx = np.sort(order[i:i + args.batch_size])
+            x, y = augment(X[idx], Y[idx], rng, geometric=not args.no_geometric_aug)
             loss = direction_loss(model(x.to(device)), y.to(device))
             opt.zero_grad()
             loss.backward()
@@ -155,16 +207,16 @@ def main() -> None:
         metrics = evaluate(model, val, device)
         score = float(np.mean([m["agg_vp1_deg"] + m["agg_vp2_deg"] for m in metrics.values()]))
         history.append({"epoch": epoch, "train_loss": float(np.mean(losses)), "val": metrics, "score": score})
-        print(f"[epoch {epoch}] loss {np.mean(losses):.4f}  val aggregate VP1+VP2 {score:.3f} deg  "
+        print(f"[epoch {epoch}] {time.time() - t0:.0f} s, loss {np.mean(losses):.4f}  val aggregate VP1+VP2 {score:.3f} deg  "
               + "  ".join(f"{n}: crop {m['crop_vp1_deg']:.1f}/{m['crop_vp2_deg']:.1f} "
-                          f"agg {m['agg_vp1_deg']:.2f}/{m['agg_vp2_deg']:.2f}" for n, m in metrics.items()))
+                          f"agg {m['agg_vp1_deg']:.2f}/{m['agg_vp2_deg']:.2f}" for n, m in metrics.items()), flush=True)
         if score < best:
             best = score
-            torch.save({"model": model.state_dict(), "width": args.width, "crop_size": CROP_SIZE,
-                        "crop_pad": CROP_PAD, "epoch": epoch, "val": metrics, "train": args.train},
+            torch.save({"model": model.state_dict(), "arch": args.arch, "width": args.width, "crop_size": CROP_SIZE,
+                        "crop_pad": CROP_PAD, "epoch": epoch, "val": metrics, "score": score, "train": args.train},
                        out / "best.pt")
-    (out / "history.json").write_text(json.dumps(history, indent=2))
-    print(f"[done] best val aggregate {best:.3f} deg; checkpoint {out / 'best.pt'}")
+        (out / "history.json").write_text(json.dumps(history, indent=2))
+    print(f"[done] best val aggregate {best:.3f} deg; checkpoint {out / 'best.pt'}", flush=True)
 
 
 if __name__ == "__main__":

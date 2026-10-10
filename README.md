@@ -246,6 +246,16 @@ python scripts/brno_eval_cli.py --session-dir .../dataset/session4_center \
     --detections runs/brno/session4_center/detections.csv --out-dir runs/brno_auto/session4_center
 ```
 
+The CNN (ResNet-18 from ImageNet weights by default, or a small from-scratch net with `--arch small`) sees
+only a handful of training cameras, so each training crop is also warped by a random homography with
+its VP labels mapped by the same homography, which is exact because VPs are points.
+
+On Colab, `scripts/vp_cnn_job.py` does all of the above in one job: it trains each `--archs` entry, keeps
+the best on validation, then calibrates every `--val` (or `--eval`) recording and scores it with
+`brno_eval_cli.py`, writing `results_<tag>.md` (calibration errors, and speed errors with the automatic
+vs the dataset's calibration) to `runs/vp_cnn/<name>/` in the project folder. Its queue entry is
+`vp_cnn_v1` in `experiments/queue.json`; the test-session run `vp_cnn_v1_test` is on hold.
+
 `video_speed_cli.py --vp-model runs/vp_cnn/best.pt` (no `--calib`) does the same on any video and
 writes `auto_calib.json` next to its outputs; the file's `reliable` flag and `quality` say whether
 the calibration passed its checks (enough straight tracks, VP agreement, scale stable across halves

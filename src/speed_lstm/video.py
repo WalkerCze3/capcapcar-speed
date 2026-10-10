@@ -53,7 +53,8 @@ def detect_and_track(video_path: str | Path, weights: str = "yolo11n.pt", tracke
     One row per (frame, track_id): frame, track_id, cls, conf, xmin, ymin, xmax, ymax (pixels).
 
     frame_step > 1 reads every frame_step-th video frame (e.g. 2 turns 50 fps into 25 fps). `frame` and
-    max_frames then count processed frames, so video frame = frame * frame_step.
+    max_frames then count processed frames; Ultralytics keeps the last of every frame_step decoded frames,
+    so processed frame k is decoded frame k * frame_step + frame_step - 1 (vp_cnn.decoded_frame).
     """
     from ultralytics import YOLO
 
