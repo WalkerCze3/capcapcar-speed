@@ -1,5 +1,52 @@
 [
  {
+  "id": "vp_cnn_v1_train",
+  "type": "shell",
+  "needs_gpu": true,
+  "requires_prepared": [
+   "session0_left",
+   "session0_center",
+   "session0_right",
+   "session1_left",
+   "session1_center",
+   "session1_right",
+   "session2_left",
+   "session2_center",
+   "session2_right",
+   "session3_left",
+   "session3_center",
+   "session3_right"
+  ],
+  "cmd": "python scripts/vp_cnn_job.py --project \"$PROJECT\" --brno \"$BRNO\" --name vp_cnn_v1 --train session0_left session0_center session0_right session1_left session1_center session1_right session2_left session2_center session2_right --val session3_left session3_center session3_right --archs resnet18 small --skip-eval"
+ },
+ {
+  "id": "vp_cnn_v1_val",
+  "type": "shell",
+  "requires_done": [
+   "vp_cnn_v1_train"
+  ],
+  "requires_prepared": [
+   "session3_left",
+   "session3_center",
+   "session3_right"
+  ],
+  "cmd": "python scripts/vp_cnn_job.py --project \"$PROJECT\" --brno \"$BRNO\" --name vp_cnn_v1 --eval-only --eval session3_left session3_center session3_right --tag val"
+ },
+ {
+  "id": "vp_cnn_v1_test",
+  "type": "shell",
+  "hold": true,
+  "requires_done": [
+   "vp_cnn_v1_val"
+  ],
+  "requires_prepared": [
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "cmd": "python scripts/vp_cnn_job.py --project \"$PROJECT\" --brno \"$BRNO\" --name vp_cnn_v1 --eval-only --eval session4_center session5_center session6_center --tag test"
+ },
+ {
   "id": "reground_bottom",
   "type": "shell",
   "requires_prepared": [

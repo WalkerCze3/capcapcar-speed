@@ -122,6 +122,22 @@ def distance_check(gt: dict, calib: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def annotated_vp1(gt: dict) -> np.ndarray:
+    """
+    VP1 (homogeneous) where the recording's annotated lane dividers meet (the along-road measured
+    segments only when there are fewer than two dividers: they are short and zigzag by a few degrees).
+    On session1_center / _right the dataset's calibration VP1 is 3-4 degrees off these lines, while
+    tracked cars agree with them.
+    """
+    lines = [l / np.linalg.norm(l[:2]) for l in gt["laneDivLines"]]
+    if len(lines) < 2:
+        for m in gt["distanceMeasurement"]:
+            if m["toVP1"]:
+                l = np.cross(_h(m["p1"]), _h(m["p2"]))
+                lines.append(l / np.linalg.norm(l[:2]))
+    return np.linalg.svd(np.array(lines))[2][-1]
+
+
 # ------------------------------------------------------------ official helpers
 
 def _point_line_distance(p, l) -> float:
