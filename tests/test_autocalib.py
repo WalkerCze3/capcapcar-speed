@@ -19,13 +19,13 @@ def true_P():
     return brno.projection_from_calibration(VP1, VP2, PP, SCALE)
 
 
-def synthetic_dets(P, n_cars=40, seed=0, px_noise=0.5, dims_jitter=0.05):
+def synthetic_dets(P, n_cars=40, seed=0, px_noise=0.5, dims_jitter=0.05, lanes=(-3.5, 0.0, 3.5)):
     """Cars of roughly prior size driving along the road in 3 lanes, both directions, boxes in pixels."""
     rng = np.random.default_rng(seed)
     prior = np.asarray(DIM_PRIORS["car"][0])
     rows = []
     for tid in range(n_cars):
-        lane = rng.choice([-3.5, 0.0, 3.5])
+        lane = rng.choice(list(lanes))
         dims = prior * np.exp(rng.normal(0.0, dims_jitter, 3))
         direction = 1 if lane >= 0 else -1
         frame = 0
@@ -88,16 +88,16 @@ def test_vp1_from_track_lines():
 def test_scale_recovered_from_car_size():
     dets = synthetic_dets(true_P(), dims_jitter=0.0, px_noise=0.0)
     boxes = autocalib.sample_car_boxes(dets, (W, H), max_boxes=150)[autocalib.BOX2D_COLS].to_numpy()
-    scale, resid = autocalib.estimate_scale(boxes, VP1, VP2, PP)
+    scale, n_used = autocalib.estimate_scale(boxes, VP1, VP2, PP, target=0.0)
     assert scale == pytest.approx(SCALE, rel=0.01)
-    assert resid < 1.0
+    assert n_used >= 50
 
 
 def test_calibrate_end_to_end():
     P = true_P()
     dets = synthetic_dets(P)
     vp2s = noisy_vp_candidates(VP2, 200, deg=1.0, outlier_frac=0.2, seed=3)
-    cal = autocalib.calibrate(dets, (W, H), vp2_candidates=vp2s, max_boxes=150)
+    cal = autocalib.calibrate(dets, (W, H), vp2_candidates=vp2s, max_boxes=150, height_log_ratio=0.0)
 
     assert cal.quality["vp1_source"] == "tracks"
     assert np.linalg.norm(cal.vp1 - VP1) < 25.0
@@ -117,7 +117,7 @@ def test_calibrate_end_to_end():
 
 def test_calibration_json_is_a_brno_system_file(tmp_path):
     dets = synthetic_dets(true_P())
-    cal = autocalib.calibrate(dets, (W, H), vp2_candidates=noisy_vp_candidates(VP2, 100, 1.0, 0.0, 4),
+    cal = autocalib.calibrate(dets, (W, H), vp2_candidates=noisy_vp_candidates(VP2, 100, 1.0, 0.0, 4), height_log_ratio=0.0,
                               max_boxes=60)
     path = tmp_path / "auto_calib.json"
     cal.save(path)
@@ -130,3 +130,37 @@ def test_calibration_json_is_a_brno_system_file(tmp_path):
 def test_missing_vp2_is_an_error():
     with pytest.raises(ValueError, match="VP2"):
         autocalib.calibrate(synthetic_dets(true_P(), n_cars=15), (W, H))
+
+
+def test_speed_drift_is_zero_at_the_true_perspective_only():
+    dets = synthetic_dets(true_P())
+    lines = autocalib.track_lines(dets, (W, H))
+    at_true, n = autocalib.speed_drift_pct(dets, lines["track_id"], true_P(), (W, H))
+    assert n >= 20 and abs(at_true) < 1.0
+    f0 = float(np.hypot(W, H))
+    d = autocalib.to_direction(np.append(VP1, 1.0), PP, f0)[0]
+    d_wrong = d + np.radians(5.0) * np.cross(d, [0.0, 0.0, 1.0]) / np.linalg.norm(np.cross(d, [0.0, 0.0, 1.0]))
+    vp1_wrong = autocalib.to_point(autocalib.from_direction(d_wrong / np.linalg.norm(d_wrong), PP, f0))
+    P_wrong = brno.projection_from_calibration(vp1_wrong, VP2, PP, 1.0)
+    wrong, _ = autocalib.speed_drift_pct(dets, lines["track_id"], P_wrong, (W, H))
+    assert abs(wrong) > 5.0
+
+
+def test_disagreeing_vp1s_are_settled_by_the_speed_check():
+    f0 = float(np.hypot(W, H))
+    good, bad = np.append(VP1, 1.0), np.append(VP1 + [600.0, -300.0], 1.0)
+    for tracks, cnn, want in ((bad, good, "cnn"), (good, bad, "tracks")):
+        drifts = {"tracks": 0.5 if tracks is good else 20.0, "cnn": 0.5 if cnn is good else 20.0}
+        vp, src, info = autocalib.choose_vp1({"tracks": tracks, "cnn": cnn}, {"tracks": 0.1, "cnn": 0.1}, drifts, PP, f0)
+        assert src == want and info["vp1_tracks_cnn_deg"] > autocalib.VP1_AGREE_DEG
+    vp, src, _ = autocalib.choose_vp1({"tracks": good, "cnn": good}, {}, {}, PP, f0)
+    assert src == "combined" and np.linalg.norm(autocalib.to_point(vp) - VP1) < 1.0
+
+
+def test_one_lane_is_flagged_as_ill_conditioned():
+    f0 = float(np.hypot(W, H))
+    for lanes, ok in (((-3.5, 0.0, 3.5), True), ((3.5,), False)):
+        dets = synthetic_dets(true_P(), lanes=lanes)
+        lines = autocalib.track_lines(dets, (W, H))
+        vp, _ = autocalib.vp_from_lines(lines, PP, f0)
+        assert (autocalib.vp1_conditioning_deg(lines, vp, PP, f0) <= autocalib.MAX_VP1_COND_DEG) == ok

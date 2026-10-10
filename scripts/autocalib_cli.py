@@ -91,8 +91,11 @@ def main() -> None:
     q = cal.quality
     print(f"[calib] VP1 {np.round(cal.vp1, 1)} from {q['vp1_source']} ({q['vp1_lines']} track lines, "
           f"{q['vp1_inlier_frac']:.0%} inliers), VP2 {np.round(cal.vp2, 1)} (spread {q['vp2_spread_deg']:.2f} deg)")
+    print(f"[calib] VP1 conditioning {q.get('vp1_cond_deg', float('nan')):.2f} deg, "
+          f"speed drift {q.get('speed_drift_pct', float('nan')):+.1f}%")
     print(f"[calib] focal {cal.focal:.0f} px, camera height {q['camera_height_m']:.2f} m, "
-          f"scale split diff {q.get('scale_split_diff', float('nan')):.1%}, residual {q['median_residual_px']:.2f} px")
+          f"scale split diff {q.get('scale_split_diff', float('nan')):.1%}, "
+          f"near/far diff {q['scale_near_far_diff']:.1%}, {q['scale_tracks']} cars, residual {q['median_residual_px']:.2f} px")
     print(f"[calib] {'reliable' if cal.reliable else 'NOT reliable'}; saved {out}")
 
     if args.compare:

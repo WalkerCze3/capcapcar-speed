@@ -220,14 +220,22 @@ more epochs). Seed-to-seed spread is ~±0.1 km/h, so compare seed triples, not s
 
 `speed_lstm/autocalib.py` builds P from the traffic itself, so a new camera needs no `--calib`:
 
-1. **VP1** (along the road) from the lines that tracked box bottom-centers move along (RANSAC intersection).
+1. **VP1** (along the road) from the lines that tracked box centers move along, intersected on the
+   Gaussian sphere with a robust (Cauchy) loss; boxes cut off by the image border are dropped first.
 2. **VP1 / VP2 per vehicle** from a CNN on vehicle crops (`speed_lstm/vp_cnn.py`, after Kocur and
    Ftáčnik 2021, [deep_vp](https://github.com/kocurvik/deep_vp)), aggregated robustly on the Gaussian
-   sphere. VP1 is taken from the tracks or the CNN, whichever fits the track lines better; VP2 always
-   comes from the CNN.
+   sphere. Track and CNN VP1 are averaged when they agree within 2°; otherwise the one under which
+   cars keep a steady speed along the road wins. VP2 always comes from the CNN.
 3. **Focal length and road plane** from VP1, VP2 and the image center (`brno.compute_camera_calibration`).
-4. **Scale** from car size: the value at which cars lifted with `lift3d` come out the size of
-   `DIM_PRIORS["car"]` (4.6 × 1.85 × 1.55 m).
+4. **Scale** from car size: the value at which the farther half of the car boxes is, in the median,
+   as high relative to a 4.6 × 1.85 × 1.55 m cuboid placed at the same spot as on calibrated cameras
+   (`BOX_HEIGHT_LOG_RATIO`, fitted on BrnoCompSpeed sessions 1-2; a detector box is about 15% lower
+   than the cuboid's). It depends on the detector and tracker: refit it with
+   `autocalib.fit_box_height_log_ratio` on training sessions if those change.
+
+On sessions 1-3 with the dataset's VP2 in place of the CNN, along-road distances come out 2.8% off on
+average with this (6.8% worst), against 0-2% for the dataset's own calibration; the constants were
+fitted on the other sessions each time. VP2 is now the error that matters: 1° off gives about 5%.
 
 The output is a BrnoCompSpeed-style system file, so it is scored exactly like the dataset's calibrations:
 
@@ -261,8 +269,9 @@ next to the dataset's own calibration scored the same way, writing `results_<tag
 
 `video_speed_cli.py --vp-model runs/vp_cnn/best.pt` (no `--calib`) does the same on any video and
 writes `auto_calib.json` next to its outputs; the file's `reliable` flag and `quality` say whether
-the calibration passed its checks (enough straight tracks, VP agreement, scale stable across halves
-of the cars). Untested on real video so far: the tests use a synthetic camera.
+the calibration passed its checks (enough straight tracks from more than one lane, cars keeping their
+speed along the road, enough different cars, scale stable across halves of the cars and between
+near and far cars).
 
 ## What's NOT in this scaffold (on purpose)
 
