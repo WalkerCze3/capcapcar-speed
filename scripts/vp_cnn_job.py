@@ -15,8 +15,9 @@ Outputs in <project>/runs/vp_cnn/<name>/:
   results_<tag>.json / .md         per recording: calibration errors against the dataset's calibration,
                                    and speed errors with the automatic vs the dataset's calibration
 Evaluation reuses each recording's cached detections (<project>/runs/brno/<rec>), so no YOLO runs.
---eval-only skips training and evaluates <name>/best.pt on --eval (e.g. the test sessions with
---tag test, once the setup is chosen).
+--skip-eval only trains; --eval-only skips training and evaluates <name>/best.pt on --eval (e.g. the
+test sessions with --tag test, once the setup is chosen). experiments/queue.json runs it as three
+jobs: train, evaluate on validation, and (on hold) evaluate on the test sessions.
 """
 
 from __future__ import annotations
@@ -145,6 +146,7 @@ def main() -> None:
     p.add_argument("--archs", nargs="+", default=["resnet18", "small"], choices=["resnet18", "small"])
     p.add_argument("--epochs", type=int, default=30)
     p.add_argument("--eval-only", action="store_true", help="Use the existing <name>/best.pt")
+    p.add_argument("--skip-eval", action="store_true", help="Only train (evaluate in a later job)")
     p.add_argument("--tag", default="val", help="Results file suffix: results_<tag>.json / .md")
     p.add_argument("--calib-name", default="system_dubska_optimal_calib.json")
     p.add_argument("--prepared", default=None, help="Default <project>/runs/brno")
@@ -166,6 +168,8 @@ def main() -> None:
         train(args, out)
     elif not (out / "best.pt").exists():
         raise SystemExit(f"--eval-only but no model at {out / 'best.pt'}")
+    if args.skip_eval:
+        return
 
     rows, failed = [], {}
     for rec in args.eval or args.val:

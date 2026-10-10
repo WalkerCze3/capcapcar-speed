@@ -16,7 +16,9 @@ in those coordinates is ((x - cx w) / (s/2), (y - cy w) / (s/2), w), normalized 
 Training: scripts/train_vp_cnn.py, labels from a recording's calibration (Brno results json).
 A few training cameras means few distinct VP configurations, so training warps each crop with a
 random homography H (rotation, scale, shift, mild perspective) and maps its labels with the same H:
-VPs are points, so the warped crop's VPs are exactly H applied to the original ones.
+VPs are points, so the warped crop's VPs are exactly H applied to the original ones. As in deep_vp,
+the warp is applied to a larger context crop and the crop is then re-fitted to the warped vehicle
+box (with jittered edges), so augmented crops are framed like detector crops at test time.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from torch import nn
 
 CROP_SIZE = 128
 CROP_PAD = 0.15  # crop side = (1 + 2 pad) * the box's longer side
+CONTEXT = 1.5    # training caches crops covering [-CONTEXT, CONTEXT] crop coordinates
 
 
 # -------------------------------------------------------------- geometry
@@ -78,9 +81,11 @@ def crop_image(frame: np.ndarray, g: CropGeom, size: int = CROP_SIZE) -> np.ndar
                           borderMode=cv2.BORDER_CONSTANT, borderValue=0)
 
 
-def _pixel_to_crop(size: int) -> np.ndarray:
-    """3x3 map from OpenCV crop pixel indices (pixel i's centre at i) to crop coordinates [-1, 1]."""
-    return np.array([[2.0 / size, 0.0, 1.0 / size - 1.0], [0.0, 2.0 / size, 1.0 / size - 1.0], [0.0, 0.0, 1.0]])
+def _pixel_to_crop(size: int, extent: float = 1.0) -> np.ndarray:
+    """3x3 map from OpenCV pixel indices (pixel i's centre at i) of a `size` px image covering
+    [-extent, extent] crop coordinates to those coordinates."""
+    k = 2.0 * extent / size
+    return np.array([[k, 0.0, k / 2.0 - extent], [0.0, k, k / 2.0 - extent], [0.0, 0.0, 1.0]])
 
 
 def random_homography(rng: np.random.Generator, max_rot_deg: float = 15.0, max_log_scale: float = 0.15,
@@ -92,6 +97,43 @@ def random_homography(rng: np.random.Generator, max_rot_deg: float = 15.0, max_l
     px, py = rng.uniform(-max_persp, max_persp, 2)
     A = np.array([[s * np.cos(a), -s * np.sin(a), tx], [s * np.sin(a), s * np.cos(a), ty], [0.0, 0.0, 1.0]])
     return np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [px, py, 1.0]]) @ A
+
+
+def refit_crop(H: np.ndarray, box_hw, rng: np.random.Generator | None = None, jitter: float = 0.04,
+               pad: float = CROP_PAD) -> np.ndarray:
+    """
+    Crop-coordinate map from the original crop to a crop re-fitted around the vehicle box after
+    warping with H: the box (half-sizes `box_hw` = (w, h) / crop side) is warped, its axis-aligned
+    extent taken, each edge jittered by up to `jitter` of the box size, and padded like CropGeom.from_box.
+    """
+    hw, hh = (float(v) for v in box_hw)
+    corners = np.array([[-hw, -hh, 1.0], [hw, -hh, 1.0], [hw, hh, 1.0], [-hw, hh, 1.0]]) @ H.T
+    xy = corners[:, :2] / corners[:, 2:]
+    (x0, y0), (x1, y1) = xy.min(axis=0), xy.max(axis=0)
+    if rng is not None and jitter > 0:
+        dx0, dx1 = rng.uniform(-jitter, jitter, 2) * (x1 - x0)
+        dy0, dy1 = rng.uniform(-jitter, jitter, 2) * (y1 - y0)
+        x0, x1, y0, y1 = x0 + dx0, x1 + dx1, y0 + dy0, y1 + dy1
+    cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+    side = max(x1 - x0, y1 - y0) * (1.0 + 2.0 * pad)
+    R = np.array([[2.0 / side, 0.0, -2.0 * cx / side], [0.0, 2.0 / side, -2.0 * cy / side], [0.0, 0.0, 1.0]])
+    return R @ H
+
+
+def render_crop(context_crop: np.ndarray, G: np.ndarray | None = None, size: int = CROP_SIZE,
+                extent: float = CONTEXT) -> np.ndarray:
+    """
+    The (size, size) crop that sees `context_crop` (covering [-extent, extent] crop coordinates) through
+    the crop-coordinate map G (identity: the plain centre crop). Pixels from outside the context repeat its edge.
+    """
+    import cv2
+
+    T_out = _pixel_to_crop(size)
+    T_in = _pixel_to_crop(context_crop.shape[0], extent)
+    G = np.eye(3) if G is None else G
+    M = np.linalg.inv(T_in) @ np.linalg.inv(G) @ T_out  # output pixel -> context pixel
+    return cv2.warpPerspective(context_crop, M, (size, size), flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
+                               borderMode=cv2.BORDER_REPLICATE)
 
 
 def warp_crop(crop: np.ndarray, H: np.ndarray) -> np.ndarray:
@@ -213,14 +255,27 @@ class VPPredictor:
 # ----------------------------------------------------------- crop sampling
 
 def sample_crop_boxes(dets, img_size: tuple[int, int], every: int = 10, max_crops: int = 2000,
-                      min_side: float = 24.0, border_margin: float = 3.0, seed: int = 0):
-    """Unclipped vehicle boxes at least `min_side` px, every `every`-th frame of a track, at most `max_crops`."""
+                      min_side: float = 24.0, border_margin: float = 3.0, min_travel_px: float = 40.0,
+                      per_track: int = 20, seed: int = 0):
+    """
+    Unclipped vehicle boxes at least `min_side` px, every `every`-th frame of a track and at most
+    `per_track` per track, from tracks whose bottom-center moved at least `min_travel_px` (a parked
+    vehicle need not point along the road and would otherwise fill the sample); at most `max_crops`.
+    """
+    import pandas as pd
+
     from speed_lstm.video import _drop_truncated
 
     d = _drop_truncated(dets, img_size[0], img_size[1], border_margin)
     d = d[np.maximum(d["xmax"] - d["xmin"], d["ymax"] - d["ymin"]) >= min_side]
     d = d.sort_values(["track_id", "frame"])
+    g = pd.DataFrame({"track_id": d["track_id"], "u": (d["xmin"] + d["xmax"]) / 2.0, "v": d["ymax"]}).groupby("track_id")
+    travel = np.hypot(g["u"].max() - g["u"].min(), g["v"].max() - g["v"].min())
+    d = d[d["track_id"].isin(travel.index[travel >= min_travel_px])]
     d = d[d.groupby("track_id").cumcount() % every == 0]
+    picks = [t.iloc[np.unique(np.linspace(0, len(t) - 1, min(per_track, len(t))).round().astype(int))]
+             for _, t in d.groupby("track_id", sort=False)]
+    d = pd.concat(picks) if picks else d.iloc[:0]
     if len(d) > max_crops:
         d = d.sample(max_crops, random_state=seed)
     return d.sort_values("frame")
@@ -234,11 +289,14 @@ def decoded_frame(frame, frame_step: int):
     return frame * frame_step + frame_step - 1
 
 
-def extract_crops(video_path, boxes, frame_step: int = 1, size: int = CROP_SIZE, pad: float = CROP_PAD):
+def extract_crops(video_path, boxes, frame_step: int = 1, size: int = CROP_SIZE, pad: float = CROP_PAD,
+                  context: float = 1.0):
     """
     Read the frames `boxes` (detect_and_track rows) sit on and crop each box.
     `frame` counts processed frames (see decoded_frame for the video frame it is).
-    Returns (crops (N, size, size, 3) uint8, geoms, the rows kept, in that order).
+    With context > 1 each crop covers [-context, context] crop coordinates at the same resolution
+    (round(size * context) px; render_crop cuts the plain crop back out).
+    Returns (crops (N, S, S, 3) uint8, geoms (of the plain crops), the rows kept, in that order).
     """
     import cv2
     import pandas as pd
@@ -259,7 +317,8 @@ def extract_crops(video_path, boxes, frame_step: int = 1, size: int = CROP_SIZE,
                 if ok:
                     for _, r in by_frame[idx].iterrows():
                         g = CropGeom.from_box((r["xmin"], r["ymin"], r["xmax"], r["ymax"]), pad)
-                        crops.append(crop_image(frame, g, size))
+                        out = int(round(size * context))
+                        crops.append(crop_image(frame, CropGeom(g.cx, g.cy, g.side * out / size), out))
                         geoms.append(g)
                         kept.append(r)
                 target_i += 1
@@ -268,5 +327,6 @@ def extract_crops(video_path, boxes, frame_step: int = 1, size: int = CROP_SIZE,
         cap.release()
     if target_i < len(wanted):
         print(f"[crops] warning: video ended at frame {idx}; {len(wanted) - target_i} of {len(wanted)} wanted frames missing")
-    crops_arr = np.stack(crops) if crops else np.zeros((0, size, size, 3), dtype=np.uint8)
+    n = int(round(size * context))
+    crops_arr = np.stack(crops) if crops else np.zeros((0, n, n, 3), dtype=np.uint8)
     return crops_arr, geoms, pd.DataFrame(kept)

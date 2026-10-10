@@ -129,3 +129,45 @@ def test_resnet_checkpoint_round_trip(tmp_path):
     with torch.no_grad():
         ref = model(vp_cnn.to_tensor(crops)).numpy()
     assert np.allclose(np.abs(np.sum(pred.predict_dirs(crops, flip_tta=False) * ref, axis=-1)), 1.0, atol=1e-5)
+
+
+def test_context_crop_centre_is_the_plain_crop():
+    cv2 = pytest.importorskip("cv2")
+    rng = np.random.default_rng(1)
+    frame = cv2.GaussianBlur(rng.integers(0, 255, (300, 400, 3), dtype=np.uint8), (5, 5), 0)
+    g = CropGeom.from_box((150, 120, 230, 180))
+    plain = vp_cnn.crop_image(frame, g, 64)
+    context = vp_cnn.crop_image(frame, CropGeom(g.cx, g.cy, g.side * 1.5), 96)
+    assert np.abs(vp_cnn.render_crop(context, size=64, extent=1.5).astype(int) - plain.astype(int)).max() <= 1
+
+
+def test_refit_crop_maps_points_exactly():
+    cv2 = pytest.importorskip("cv2")
+    size, ext = 128, vp_cnn.CONTEXT
+    n = int(round(size * ext))
+    context = np.zeros((n, n, 3), dtype=np.uint8)
+    T_in = vp_cnn._pixel_to_crop(n, ext)
+    p = np.array([0.25, -0.15, 1.0])                          # a point on the car, in crop coordinates
+    px = np.linalg.inv(T_in) @ p
+    cv2.circle(context, (int(round(px[0])), int(round(px[1]))), 4, (255, 255, 255), -1)
+    p = T_in @ np.array([round(px[0]), round(px[1]), 1.0])
+    rng = np.random.default_rng(5)
+    T_out = vp_cnn._pixel_to_crop(size)
+    for _ in range(5):
+        G = vp_cnn.refit_crop(vp_cnn.random_homography(rng), (0.4, 0.25), rng)
+        out = vp_cnn.render_crop(context, G, size)
+        ys, xs = np.nonzero(out[..., 0] > 0)
+        w = out[ys, xs, 0].astype(np.float64)
+        seen = T_out @ np.array([np.average(xs, weights=w), np.average(ys, weights=w), 1.0])
+        expected = vp_cnn.transform_dirs(p, G)
+        assert np.allclose(seen[:2], expected[:2] / expected[2], atol=0.03)
+
+
+def test_refit_crop_frames_the_warped_box_like_a_detector_crop():
+    H = vp_cnn.random_homography(np.random.default_rng(2))
+    G = vp_cnn.refit_crop(H, (0.4, 0.25))                     # no jitter
+    corners = np.array([[-0.4, -0.25, 1], [0.4, -0.25, 1], [0.4, 0.25, 1], [-0.4, 0.25, 1]]) @ G.T
+    xy = corners[:, :2] / corners[:, 2:]
+    lo, hi = xy.min(axis=0), xy.max(axis=0)
+    assert np.allclose((lo + hi) / 2, 0.0, atol=1e-9)
+    assert max(hi - lo) == pytest.approx(2.0 / (1 + 2 * vp_cnn.CROP_PAD))

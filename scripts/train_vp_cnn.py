@@ -15,7 +15,12 @@ recording-level aggregate (what autocalib actually uses); the best epoch is pick
 
 With few training cameras the network could memorise their few VP configurations, so each training
 crop is warped by a random homography with its labels mapped exactly (vp_cnn.random_homography),
-on top of mirroring and brightness / contrast jitter.
+on top of mirroring and brightness / contrast jitter. Crops are cached with extra context around
+them so the warp has real pixels to show, and re-fitted to the warped vehicle box afterwards.
+
+VP1 labels come from the recording's annotated along-road lines (brno.annotated_vp1) rather than its
+calibration file, whose VP1 is 3-4 degrees off the road on session1_center / _right; VP2 labels come
+from the calibration file.
 """
 
 from __future__ import annotations
@@ -33,9 +38,10 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from speed_lstm import autocalib, brno  # noqa: E402
-from speed_lstm.vp_cnn import (CROP_PAD, CROP_SIZE, CropGeom, VPNet, angle_deg, crop_dir_to_vp,  # noqa: E402
-                               direction_loss, extract_crops, flip_dir, random_homography, sample_crop_boxes,
-                               to_tensor, transform_dirs, vp_to_crop_dir, warp_crop)
+from speed_lstm.vp_cnn import (CONTEXT, CROP_PAD, CROP_SIZE, CropGeom, VPNet, angle_deg,  # noqa: E402
+                               crop_dir_to_vp, direction_loss, extract_crops, flip_dir, random_homography,
+                               refit_crop, render_crop, sample_crop_boxes, to_tensor, transform_dirs,
+                               vp_to_crop_dir)
 
 DEFAULT_LR = {"small": 1e-3, "resnet18": 3e-4}
 
@@ -57,58 +63,96 @@ def local_video(src: Path, cache_dir: str | None) -> tuple[Path, bool]:
     return dst, True
 
 
+def encode_crops(crops: np.ndarray, quality: int = 95) -> dict:
+    """JPEG-encode crops into one byte array + offsets (a tenth of the npz size, for a Drive cache)."""
+    import cv2
+
+    blobs = [cv2.imencode(".jpg", c, [cv2.IMWRITE_JPEG_QUALITY, quality])[1].ravel() for c in crops]
+    offsets = np.cumsum([0] + [len(b) for b in blobs])
+    return {"jpeg": np.concatenate(blobs) if blobs else np.zeros(0, np.uint8), "jpeg_offsets": offsets,
+            "crop_shape": np.array(crops.shape[1:])}
+
+
+def decode_crops(data: dict) -> np.ndarray:
+    import cv2
+
+    buf, off = data["jpeg"], data["jpeg_offsets"]
+    if len(off) <= 1:
+        return np.zeros((0, *data["crop_shape"]), dtype=np.uint8)
+    return np.stack([cv2.imdecode(buf[a:b], cv2.IMREAD_COLOR) for a, b in zip(off[:-1], off[1:])])
+
+
 def load_recording(name: str, args) -> dict:
-    """Crops + crop-coordinate VP labels for one recording, cached as <cache-dir>/<name>_e<every>_n<max>.npz."""
-    cache = Path(args.cache_dir or Path(args.out) / "crops") / f"{name}_e{args.every}_n{args.max_crops}.npz"
+    """
+    Context crops, plain-crop geometry, box sizes and crop-coordinate VP labels for one recording.
+    Crops are cached as <cache-dir>/<name>_e<every>_n<max>_c<context>.npz; labels are recomputed on load.
+    """
+    session = Path(args.dataset_root) / "dataset" / name
+    cache = Path(args.cache_dir or Path(args.out) / "crops") / f"{name}_e{args.every}_n{args.max_crops}_c{CONTEXT:g}.npz"
     if cache.exists():
         z = np.load(cache)
-        print(f"[data] {name}: {len(z['crops'])} cached crops from {cache}", flush=True)
-        return {k: z[k] for k in z.files}
+        data = {"crops": decode_crops(z), "geoms": z["geoms"], "box_hw": z["box_hw"]}
+        print(f"[data] {name}: {len(data['crops'])} cached crops from {cache}", flush=True)
+    else:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from brno_eval_cli import mask_filter
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from brno_eval_cli import mask_filter
+        prepared = Path(args.prepared_root) / name
+        summary = json.loads((prepared / "summary.json").read_text()) if (prepared / "summary.json").exists() else {}
+        step = int(summary.get("frame_step", args.frame_step))
+        dets = mask_filter(pd.read_csv(prepared / "detections.csv"), session / "video_mask.png")
+        boxes = sample_crop_boxes(dets, (brno.WIDTH, brno.HEIGHT), every=args.every, max_crops=args.max_crops)
+        video, copied = local_video(session / "video.avi", args.video_cache)
+        t0 = time.time()
+        try:
+            crops, geoms, kept = extract_crops(video, boxes, step, CROP_SIZE, CROP_PAD, context=CONTEXT)
+        finally:
+            if copied:
+                video.unlink()
+        geo = np.array([[g.cx, g.cy, g.side] for g in geoms]).reshape(-1, 3)
+        box_hw = (np.stack([(kept["xmax"] - kept["xmin"]).to_numpy(), (kept["ymax"] - kept["ymin"]).to_numpy()], axis=1)
+                  / geo[:, 2:3]) if len(kept) else np.zeros((0, 2))
+        data = {"crops": crops, "geoms": geo, "box_hw": box_hw.astype(np.float64)}
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cache.with_name(cache.stem + ".tmp.npz")
+        np.savez(tmp, geoms=geo, box_hw=data["box_hw"], **encode_crops(crops))
+        tmp.replace(cache)
+        data["crops"] = decode_crops(np.load(cache))  # train on exactly what a cached rerun would see
+        print(f"[data] {name}: {len(crops)} crops of {len(dets)} masked detections (frame step {step}, "
+              f"{time.time() - t0:.0f} s) -> {cache}", flush=True)
 
-    session = Path(args.dataset_root) / "dataset" / name
-    prepared = Path(args.prepared_root) / name
     calib, _ = brno.load_system(Path(args.dataset_root) / "results" / name / args.calib_name)
-    summary = json.loads((prepared / "summary.json").read_text()) if (prepared / "summary.json").exists() else {}
-    step = int(summary.get("frame_step", args.frame_step))
-    dets = mask_filter(pd.read_csv(prepared / "detections.csv"), session / "video_mask.png")
-    boxes = sample_crop_boxes(dets, (brno.WIDTH, brno.HEIGHT), every=args.every, max_crops=args.max_crops)
-    video, copied = local_video(session / "video.avi", args.video_cache)
-    t0 = time.time()
-    try:
-        crops, geoms, _ = extract_crops(video, boxes, step, CROP_SIZE, CROP_PAD)
-    finally:
-        if copied:
-            video.unlink()
-    vp1, vp2 = (np.append(np.asarray(calib[k], dtype=np.float64), 1.0) for k in ("vp1", "vp2"))
+    pp = np.asarray(calib["pp"], dtype=np.float64)
+    vp1 = np.append(np.asarray(calib["vp1"], dtype=np.float64), 1.0)
+    if args.vp1_label == "annotations":
+        ann = brno.annotated_vp1(brno.load_gt(session / "gt_data.pkl"))
+        f0 = 2.0 * float(np.hypot(*pp))
+        a, b = autocalib.to_direction(np.stack([ann, vp1]), pp, f0)
+        print(f"[data] {name}: VP1 label from annotated lines, {np.degrees(np.arccos(min(1.0, abs(a @ b)))):.2f} deg "
+              f"from the calibration's", flush=True)
+        vp1 = ann
+    vp2 = np.append(np.asarray(calib["vp2"], dtype=np.float64), 1.0)
+    geoms = [CropGeom(*g) for g in data["geoms"]]
     labels = np.array([[vp_to_crop_dir(vp1, g), vp_to_crop_dir(vp2, g)] for g in geoms]).reshape(-1, 2, 3)
-    geo = np.array([[g.cx, g.cy, g.side] for g in geoms]).reshape(-1, 3)
-    data = {"crops": crops, "labels": labels.astype(np.float32), "geoms": geo,
-            "vp1": vp1, "vp2": vp2, "pp": np.asarray(calib["pp"], dtype=np.float64)}
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    tmp = cache.with_name(cache.stem + ".tmp.npz")
-    np.savez_compressed(tmp, **data)
-    tmp.replace(cache)
-    print(f"[data] {name}: {len(crops)} crops of {len(dets)} masked detections (frame step {step}, "
-          f"{time.time() - t0:.0f} s) -> {cache}", flush=True)
-    return data
+    return {**data, "labels": labels.astype(np.float32), "vp1": vp1, "vp2": vp2, "pp": pp}
 
 
-def augment(crops: np.ndarray, labels: np.ndarray, rng: np.random.Generator,
+def augment(context: np.ndarray, labels: np.ndarray, box_hw: np.ndarray, rng: np.random.Generator,
             geometric: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
-    """Mirror, random homography (labels mapped exactly), brightness / contrast jitter."""
-    x = crops.copy()
+    """
+    Training crops from context crops: mirror, random homography with the crop re-fitted to the
+    warped box (labels mapped exactly), brightness / contrast jitter.
+    """
+    x = np.empty((len(context), CROP_SIZE, CROP_SIZE, 3), dtype=np.uint8)
     y = labels.astype(np.float64)
-    for i in range(len(x)):
+    for i in range(len(context)):
+        c = context[i]
         if rng.random() < 0.5:
-            x[i] = x[i, :, ::-1]
+            c = c[:, ::-1]
             y[i] = flip_dir(y[i])
-        if geometric:
-            H = random_homography(rng)
-            x[i] = warp_crop(x[i], H)
-            y[i] = transform_dirs(y[i], H)
+        G = refit_crop(random_homography(rng), box_hw[i], rng) if geometric else np.eye(3)
+        x[i] = render_crop(np.ascontiguousarray(c), G)
+        y[i] = transform_dirs(y[i], G)
     t = to_tensor(x)
     gain = torch.from_numpy(rng.uniform(0.7, 1.3, (len(t), 1, 1, 1))).float()
     bias = torch.from_numpy(rng.uniform(-0.1, 0.1, (len(t), 1, 1, 1))).float()
@@ -121,8 +165,8 @@ def evaluate(model, recs: dict[str, dict], device) -> dict:
     out = {}
     for name, r in recs.items():
         preds = []
-        for i in range(0, len(r["crops"]), 256):
-            preds.append(model(to_tensor(r["crops"][i:i + 256]).to(device)).cpu().numpy())
+        for i in range(0, len(r["plain"]), 256):
+            preds.append(model(to_tensor(r["plain"][i:i + 256]).to(device)).cpu().numpy())
         d = np.concatenate(preds)
         per_crop = angle_deg(d, r["labels"])
         # Recording-level aggregate, as autocalib does it, on the Gaussian sphere around the image center.
@@ -145,6 +189,8 @@ def main() -> None:
     p.add_argument("--dataset-root", required=True, help="2016-ITS-BrnoCompSpeed (has dataset/ and results/)")
     p.add_argument("--prepared-root", default="runs/brno", help="brno_eval_cli.py outputs per recording")
     p.add_argument("--calib-name", default="system_dubska_optimal_calib.json", help="label source in results/<rec>/")
+    p.add_argument("--vp1-label", choices=["annotations", "calib"], default="annotations",
+                   help="VP1 labels from the annotated along-road lines (gt_data.pkl) or the calibration file")
     p.add_argument("--train", nargs="+", required=True)
     p.add_argument("--val", nargs="+", required=True)
     p.add_argument("--frame-step", type=int, default=2, help="Used when a recording has no summary.json")
@@ -180,8 +226,11 @@ def main() -> None:
     val = {n: r for n, r in ((n, load_recording(n, args)) for n in args.val) if len(r["crops"])}
     if not train or not val:
         raise SystemExit("No crops to train or validate on")
+    for r in val.values():
+        r["plain"] = np.stack([render_crop(c) for c in r.pop("crops")])
     X = np.concatenate([r["crops"] for r in train])
     Y = np.concatenate([r["labels"] for r in train])
+    B = np.concatenate([r["box_hw"] for r in train])
     print(f"[data] {len(X)} training crops from {len(train)} recordings; validating on {list(val)}", flush=True)
 
     model = VPNet(args.width, args.arch, pretrained=not args.no_pretrained).to(device)
@@ -197,7 +246,7 @@ def main() -> None:
         losses = []
         for i in range(0, len(order), args.batch_size):
             idx = np.sort(order[i:i + args.batch_size])
-            x, y = augment(X[idx], Y[idx], rng, geometric=not args.no_geometric_aug)
+            x, y = augment(X[idx], Y[idx], B[idx], rng, geometric=not args.no_geometric_aug)
             loss = direction_loss(model(x.to(device)), y.to(device))
             opt.zero_grad()
             loss.backward()
