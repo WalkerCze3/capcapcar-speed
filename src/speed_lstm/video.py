@@ -5,6 +5,11 @@ Video -> per-vehicle speed with a trained v2 checkpoint.
           --(lift3d, camera P)--> road-frame 3D cuboids per frame
           --(16-obs windows)-----> Predictor(timestamps, boxes2d, boxes3d) -> m/s
 
+Without a calibration (--calib omitted) the lifting step is skipped: each
+track's raw detector boxes become its trajectory, and only a 2D checkpoint
+can be used. Either way the raw per-vehicle trajectories and their per-frame
+motion features are written to trajectories.csv for speed learning.
+
 The model inputs are built exactly as at training time: `boxes3d` rows are
 [center_x, center_y, center_z, length, width, height] in metres in the road
 frame, and `boxes2d` is the min/max box of the *projected fitted cuboid*
@@ -181,6 +186,68 @@ def lift_tracks(dets: pd.DataFrame, timestamps: np.ndarray, projections: dict[in
                                       *BOX3D_COLS, *BOX2D_COLS, "residual_px"])
 
 
+# ------------------------------------------------------------- trajectories
+
+TRAJECTORY_FEATURE_COLS = [
+    "cx", "cy", "bottom_y", "width", "height",
+    "pos_x", "pos_y", "rel_height",
+    "dt", "frame_gap", "dx_px", "dy_px", "dbottom_px",
+    "vx_px_s", "vy_px_s", "vbottom_px_s", "vx_per_width_s", "vbottom_per_height_s",
+    "dlog_width_s", "dlog_height_s", "dlog_area_s",
+]
+
+
+def track_trajectories(dets: pd.DataFrame, timestamps: np.ndarray, img_size: tuple[int, int],
+                       border_margin: float = 3.0) -> pd.DataFrame:
+    """
+    Calibration-free trajectories: one row per kept (track_id, frame) with timestamp, the track's
+    majority class and its raw detector box (BOX2D_COLS, pixels). Boxes clipped by the image edge
+    are dropped, as in lift_tracks, since they don't bound the whole vehicle.
+    """
+    dets = _drop_truncated(dets, img_size[0], img_size[1], border_margin)
+    out = []
+    for tid, g in dets.groupby("track_id", sort=True):
+        g = g.sort_values("frame").drop_duplicates("frame")
+        frames = g["frame"].to_numpy()
+        out.append(pd.DataFrame({"track_id": tid, "frame": frames.astype(int), "timestamp": timestamps[frames],
+                                 "cls": g["cls"].mode().iloc[0],
+                                 **{c: g[c].to_numpy(dtype=np.float64) for c in BOX2D_COLS}}))
+    cols = ["track_id", "frame", "timestamp", "cls", *BOX2D_COLS]
+    return pd.concat(out, ignore_index=True)[cols] if out else pd.DataFrame(columns=cols)
+
+
+def trajectory_features(traj: pd.DataFrame, img_size: tuple[int, int]) -> pd.DataFrame:
+    """
+    Per-frame features of each track's box trajectory, for speed learning without calibration.
+    traj: needs track_id, frame, timestamp and BOX2D_COLS (track_trajectories or lift_tracks output).
+
+    Position in frame: pos_x = cx / image width, pos_y = bottom_y / image height (the bottom edge is
+    the closest box point to the road), rel_height = box height / image height.
+    Displacement: dx/dy of the box center and d(bottom_y) since the track's previous detection, in
+    pixels (frame_gap says how many frames that spans) and per second; vx_per_width_s and
+    vbottom_per_height_s divide by the box's own size, which cancels most of the near/far scale.
+    Size change: d log(width|height|area) per second, the relative growth rate (positive = approaching).
+    Difference columns are NaN on each track's first row.
+    """
+    img_w, img_h = img_size
+    t = traj.sort_values(["track_id", "frame"]).reset_index(drop=True)
+    w, h = t["xmax"] - t["xmin"], t["ymax"] - t["ymin"]
+    f = pd.DataFrame({"cx": (t["xmin"] + t["xmax"]) / 2, "cy": (t["ymin"] + t["ymax"]) / 2,
+                      "bottom_y": t["ymax"], "width": w, "height": h})
+    f["pos_x"], f["pos_y"], f["rel_height"] = f["cx"] / img_w, f["bottom_y"] / img_h, h / img_h
+
+    g = t["track_id"]
+    diff = lambda s: s.groupby(g).diff()  # noqa: E731
+    f["dt"], f["frame_gap"] = diff(t["timestamp"]), diff(t["frame"])
+    f["dx_px"], f["dy_px"], f["dbottom_px"] = diff(f["cx"]), diff(f["cy"]), diff(f["bottom_y"])
+    f["vx_px_s"], f["vy_px_s"], f["vbottom_px_s"] = f["dx_px"] / f["dt"], f["dy_px"] / f["dt"], f["dbottom_px"] / f["dt"]
+    f["vx_per_width_s"] = f["vx_px_s"] / f["width"]
+    f["vbottom_per_height_s"] = f["vbottom_px_s"] / f["height"]
+    for name, s in (("width", w), ("height", h), ("area", w * h)):
+        f[f"dlog_{name}_s"] = diff(np.log(s)) / f["dt"]
+    return pd.concat([t, f[TRAJECTORY_FEATURE_COLS]], axis=1)
+
+
 # ---------------------------------------------------------------- windowing
 
 def build_video_windows(lifted: pd.DataFrame, n_observations: int = 16, stride: int = 8,
@@ -190,14 +257,17 @@ def build_video_windows(lifted: pd.DataFrame, n_observations: int = 16, stride: 
     consecutive frames of one track, strictly increasing timestamps, no gap
     above max_timestamp_gap. Each dict is a predict.py-compatible window
     (timestamps, boxes2d, boxes3d) plus track_id / frames for bookkeeping.
+    `lifted` may also be track_trajectories output (no 3D columns): the
+    windows then carry boxes2d only, which is all a 2D checkpoint needs.
     """
+    has_3d = all(c in lifted.columns for c in BOX3D_COLS)
     windows = []
     for tid, g in lifted.groupby("track_id", sort=True):
         g = g.sort_values("frame")
         frames = g["frame"].to_numpy()
         ts = g["timestamp"].to_numpy(dtype=np.float64)
         b2 = g[BOX2D_COLS].to_numpy(dtype=np.float64)
-        b3 = g[BOX3D_COLS].to_numpy(dtype=np.float64)
+        b3 = g[BOX3D_COLS].to_numpy(dtype=np.float64) if has_3d else None
         # Stride within each run of consecutive frames, so a dropped detection
         # only costs the windows that span it, not the alignment of every later one.
         run_starts = np.flatnonzero(np.diff(frames) != 1) + 1
@@ -207,13 +277,19 @@ def build_video_windows(lifted: pd.DataFrame, n_observations: int = 16, stride: 
                 dt = np.diff(ts[sl])
                 if not (np.all(dt > 0) and np.all(dt <= max_timestamp_gap)):
                     continue
-                windows.append({"track_id": int(tid), "frames": frames[sl].tolist(), "timestamps": ts[sl].tolist(),
-                                "boxes2d": b2[sl].tolist(), "boxes3d": b3[sl].tolist()})
+                w = {"track_id": int(tid), "frames": frames[sl].tolist(), "timestamps": ts[sl].tolist(),
+                     "boxes2d": b2[sl].tolist()}
+                if has_3d:
+                    w["boxes3d"] = b3[sl].tolist()
+                windows.append(w)
     return windows
 
 
 def geometric_speed(window: dict) -> float:
-    """Planar path length / elapsed time over the window's 3D centers — the training target's formula."""
+    """Planar path length / elapsed time over the window's 3D centers — the training target's formula.
+    NaN for a calibration-free window, which has no metric positions."""
+    if "boxes3d" not in window:
+        return float("nan")
     xy = np.asarray(window["boxes3d"])[:, :2]
     t = window["timestamps"]
     return float(np.linalg.norm(np.diff(xy, axis=0), axis=1).sum() / (t[-1] - t[0]))
@@ -222,7 +298,7 @@ def geometric_speed(window: dict) -> float:
 def predict_windows(predictor, windows: list[dict]) -> pd.DataFrame:
     rows = []
     for w in windows:
-        speed = predictor.predict(timestamps=w["timestamps"], boxes2d=w["boxes2d"], boxes3d=w["boxes3d"])
+        speed = predictor.predict(timestamps=w["timestamps"], boxes2d=w["boxes2d"], boxes3d=w.get("boxes3d"))
         rows.append({"track_id": w["track_id"], "start_frame": w["frames"][0], "end_frame": w["frames"][-1],
                      "t_start": w["timestamps"][0], "t_end": w["timestamps"][-1],
                      "speed_mps": speed, "speed_kmh": speed * 3.6, "geometric_mps": geometric_speed(w)})
@@ -238,9 +314,13 @@ def summarize_tracks(preds: pd.DataFrame, lifted: pd.DataFrame) -> pd.DataFrame:
     agg = preds.groupby("track_id").agg(n_windows=("speed_mps", "size"), speed_mps=("speed_mps", "median"),
                                         geometric_mps=("geometric_mps", "median"))
     agg["speed_kmh"] = agg["speed_mps"] * 3.6
-    meta = lifted.groupby("track_id").agg(cls=("cls", "first"), direction=("direction", "first"),
-                                          length=("length", "median"), width=("width", "median"),
-                                          height=("height", "median"))
+    if "direction" in lifted.columns:
+        meta = lifted.groupby("track_id").agg(cls=("cls", "first"), direction=("direction", "first"),
+                                              length=("length", "median"), width=("width", "median"),
+                                              height=("height", "median"))
+    else:  # calibration-free: no direction or metric dims
+        meta = lifted.groupby("track_id").agg(cls=("cls", "first"))
+        meta["direction"] = meta["length"] = meta["width"] = meta["height"] = np.nan
     return agg.join(meta).reset_index()[["track_id", "cls", "direction", "n_windows", "speed_mps", "speed_kmh",
                                          "geometric_mps", "length", "width", "height"]]
 
@@ -248,8 +328,9 @@ def summarize_tracks(preds: pd.DataFrame, lifted: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------- rendering
 
 def render_video(video_path: str | Path, out_path: str | Path, lifted: pd.DataFrame, preds: pd.DataFrame,
-                 projections: dict[int, np.ndarray], max_frames: int | None = None) -> None:
-    """Draw each fitted cuboid, plus the latest window speed that has ended by that frame."""
+                 projections: dict[int, np.ndarray] | None, max_frames: int | None = None) -> None:
+    """Draw each fitted cuboid (or, without projections, each 2D box), plus the latest window speed
+    that has ended by that frame."""
     import cv2
 
     cap = cv2.VideoCapture(str(video_path))
@@ -266,13 +347,17 @@ def render_video(video_path: str | Path, out_path: str | Path, lifted: pd.DataFr
         if not ok or (max_frames is not None and frame >= max_frames):
             break
         for _, r in by_frame.get(frame, pd.DataFrame()).iterrows():
-            corners = cuboid_image_corners(r[BOX3D_COLS[:3]].to_numpy(float), r[BOX3D_COLS[3:]].to_numpy(float),
-                                           projections[int(r["direction"])])
-            if corners is None:
-                continue
-            color = (0, 200, 255) if r["direction"] == 1 else (255, 160, 0)
-            for a, b in CUBOID_EDGES:
-                cv2.line(img, tuple(map(int, corners[a])), tuple(map(int, corners[b])), color, 2, cv2.LINE_AA)
+            if projections is None:
+                color = (0, 220, 0)
+                cv2.rectangle(img, (int(r["xmin"]), int(r["ymin"])), (int(r["xmax"]), int(r["ymax"])), color, 2)
+            else:
+                corners = cuboid_image_corners(r[BOX3D_COLS[:3]].to_numpy(float), r[BOX3D_COLS[3:]].to_numpy(float),
+                                               projections[int(r["direction"])])
+                if corners is None:
+                    continue
+                color = (0, 200, 255) if r["direction"] == 1 else (255, 160, 0)
+                for a, b in CUBOID_EDGES:
+                    cv2.line(img, tuple(map(int, corners[a])), tuple(map(int, corners[b])), color, 2, cv2.LINE_AA)
             label = f"#{int(r['track_id'])} {r['cls']}"
             hist = speeds.get(r["track_id"])
             if hist is not None:
@@ -293,11 +378,12 @@ def render_video(video_path: str | Path, out_path: str | Path, lifted: pd.DataFr
 def main() -> None:
     from speed_lstm.model import Predictor
 
-    p = argparse.ArgumentParser(description="Video -> 3D boxes -> speed with a v2 checkpoint.")
+    p = argparse.ArgumentParser(description="Video -> tracked boxes (-> 3D boxes) -> speed with a v2 checkpoint.")
     p.add_argument("--video", required=True)
     p.add_argument("--checkpoint", required=True, help="best.pt saved by speed_lstm.train")
-    p.add_argument("--calib", required=True,
-                   help='I-24 hg.json (with --camera) or a single-camera json {"P": 3x4}')
+    p.add_argument("--calib", default=None,
+                   help='I-24 hg.json (with --camera) or a single-camera json {"P": 3x4}. '
+                        "Omit to skip 3D lifting (2D checkpoints only)")
     p.add_argument("--camera", default=None, help="Camera name inside hg.json / timestamp csv, e.g. p1c1")
     p.add_argument("--calib-units", choices=["ft", "m"], default="ft",
                    help="World units P expects (I-24 hg.json uses feet)")
@@ -316,6 +402,8 @@ def main() -> None:
                    help="Reuse a detections.csv from an earlier run instead of running YOLO again")
     p.add_argument("--stride", type=int, default=8, help="Frames between window starts")
     p.add_argument("--smooth", type=int, default=5, help="Centered moving-average length for 3D centers (1 = off)")
+    p.add_argument("--border-margin", type=float, default=3.0,
+                   help="Drop boxes within this many pixels of the image edge (truncated vehicles)")
     p.add_argument("--out-dir", default=None, help="Default: runs/video/<video stem>")
     p.add_argument("--render", action="store_true", help="Also write annotated.mp4 with cuboids + speeds")
     args = p.parse_args()
@@ -324,9 +412,13 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     predictor = Predictor(args.checkpoint)
-    projections = load_projections(args.calib, args.camera, args.calib_units, args.calib_image_scale)
+    projections = None
+    if args.calib:
+        projections = load_projections(args.calib, args.camera, args.calib_units, args.calib_image_scale)
+    elif predictor.mode != "2d":
+        raise ValueError(f"A {predictor.mode} checkpoint needs 3D boxes; pass --calib or use a 2d checkpoint")
     direction = None if args.direction == "auto" else {"EB": 1, "WB": -1}[args.direction]
-    if direction is not None and direction not in projections:
+    if projections is not None and direction is not None and direction not in projections:
         raise ValueError(f"No {args.direction} projection for this camera in {args.calib}")
 
     fps, n_frames, img_w, img_h = video_info(args.video)
@@ -349,10 +441,19 @@ def main() -> None:
     n_ts = int(dets["frame"].max()) + 1 if len(dets) else 0
     timestamps = frame_timestamps(np.arange(n_ts), fps, args.ts_csv, args.camera, args.frame_offset)
 
-    lifted = lift_tracks(dets, timestamps, projections, (img_w, img_h), direction, smooth_window=args.smooth)
-    lifted.to_csv(out_dir / "boxes3d.csv", index=False)
-    print(f"[lift] {len(lifted)} 3D boxes, median reprojection error "
-          f"{lifted['residual_px'].median() if len(lifted) else float('nan'):.2f} px")
+    traj = track_trajectories(dets, timestamps, (img_w, img_h), args.border_margin)
+    trajectory_features(traj, (img_w, img_h)).to_csv(out_dir / "trajectories.csv", index=False)
+    print(f"[traj] {len(traj)} boxes over {traj['track_id'].nunique()} tracks -> trajectories.csv")
+
+    if projections is None:
+        lifted = traj  # windows of raw detector boxes
+        print("[lift] no --calib: 2D windows use raw detector boxes (training boxes were projected cuboids)")
+    else:
+        lifted = lift_tracks(dets, timestamps, projections, (img_w, img_h), direction,
+                             border_margin=args.border_margin, smooth_window=args.smooth)
+        lifted.to_csv(out_dir / "boxes3d.csv", index=False)
+        print(f"[lift] {len(lifted)} 3D boxes, median reprojection error "
+              f"{lifted['residual_px'].median() if len(lifted) else float('nan'):.2f} px")
 
     windows = build_video_windows(lifted, predictor.n_observations, args.stride, predictor.max_timestamp_gap)
     (out_dir / "windows.json").write_text(json.dumps(windows))

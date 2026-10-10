@@ -166,6 +166,14 @@ Caveat: the model was trained on annotation-derived cuboids, and these are monoc
 from detector boxes. The metric scale comes entirely from the calibration, so a wrong P (or
 wrong `--calib-units`) scales every speed.
 
+Every run also writes `trajectories.csv`: each vehicle's raw ByteTrack box per frame (truncated
+boxes dropped) with calibration-free motion features for speed learning: position in frame
+(`pos_x`, `pos_y` from the box bottom, `rel_height`), center/bottom displacement since the
+previous detection in pixels and per second (also divided by the box's own size), and the
+relative size-change rates `dlog_width_s`, `dlog_height_s`, `dlog_area_s`. Omit `--calib` to
+skip 3D lifting entirely; only a `2d` checkpoint can run then, on windows of raw detector boxes
+(training used projected cuboid boxes, so expect some domain gap), and `geometric_mps` is empty.
+
 #### BrnoCompSpeed
 
 `scripts/brno_eval_cli.py` runs the same pipeline on a BrnoCompSpeed recording and scores it
