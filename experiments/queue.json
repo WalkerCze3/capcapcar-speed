@@ -1,5 +1,143 @@
 [
  {
+  "id": "train_i24_2d",
+  "type": "shell",
+  "cmd": "D=$(for d in /content/drive/MyDrive/Final-Project-CHULA/I24-3D/data /content/drive/MyDrive/Final-Project-CHULA/data; do [ -d \"$d/obj\" ] && echo \"$d\" && break; done); echo \"I-24 data: $D\"; python scripts/train_v2_cli.py --data-dir \"$D\" --mode 2d --out /content/runs/v2/2d --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d && cp /content/runs/v2/2d/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d/best.pt",
+  "needs_gpu": true
+ },
+ {
+  "id": "exp_126_2d_c3_bs64_s0",
+  "type": "experiment",
+  "requires_prepared": [
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "requires_done": [
+   "train_i24_2d"
+  ],
+  "config": {
+   "name": "2d_c3_bs64_s0",
+   "base_checkpoint": "runs/v2/2d/best.pt",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 0
+   }
+  }
+ },
+ {
+  "id": "exp_127_2d_c3_bs64_s1",
+  "type": "experiment",
+  "requires_prepared": [
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "requires_done": [
+   "train_i24_2d"
+  ],
+  "config": {
+   "name": "2d_c3_bs64_s1",
+   "base_checkpoint": "runs/v2/2d/best.pt",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 1
+   }
+  }
+ },
+ {
+  "id": "exp_128_2d_c3_bs64_s2",
+  "type": "experiment",
+  "requires_prepared": [
+   "session1_center",
+   "session2_center",
+   "session3_center",
+   "session4_center",
+   "session5_center",
+   "session6_center"
+  ],
+  "requires_done": [
+   "train_i24_2d"
+  ],
+  "config": {
+   "name": "2d_c3_bs64_s2",
+   "base_checkpoint": "runs/v2/2d/best.pt",
+   "train": [
+    "session1_center",
+    "session2_center",
+    "session3_center"
+   ],
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": {
+    "epochs": 30,
+    "lr": 0.001,
+    "batch_size": 64,
+    "freeze": "none",
+    "renorm": "keep",
+    "loss": "mse",
+    "seed": 2
+   }
+  }
+ },
+ {
+  "id": "exp_129_ens_2d_c3",
+  "type": "experiment",
+  "config": {
+   "name": "ens_2d_c3",
+   "test": [
+    "session4_center",
+    "session5_center",
+    "session6_center"
+   ],
+   "finetune": null,
+   "ensemble_of": [
+    "exp_126_2d_c3_bs64_s0",
+    "exp_127_2d_c3_bs64_s1",
+    "exp_128_2d_c3_bs64_s2"
+   ]
+  }
+ },
+ {
   "id": "vp_cnn_v1_train",
   "type": "shell",
   "needs_gpu": true,
@@ -5561,12 +5699,6 @@
   "type": "prepare",
   "recording": "session6_right",
   "max_seconds": 600
- },
- {
-  "id": "train_i24_2d",
-  "type": "shell",
-  "cmd": "python scripts/train_v2_cli.py --data-dir /content/drive/MyDrive/Final-Project-CHULA/I24-3D/data --mode 2d --out /content/runs/v2/2d --epochs 10 && mkdir -p /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d && cp /content/runs/v2/2d/best.pt /content/drive/MyDrive/Final-Project-CHULA/runs/v2/2d/best.pt",
-  "needs_gpu": true
  },
  {
   "id": "exp_033_all9_baseline_i24",
