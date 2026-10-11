@@ -171,3 +171,21 @@ def test_refit_crop_frames_the_warped_box_like_a_detector_crop():
     lo, hi = xy.min(axis=0), xy.max(axis=0)
     assert np.allclose((lo + hi) / 2, 0.0, atol=1e-9)
     assert max(hi - lo) == pytest.approx(2.0 / (1 + 2 * vp_cnn.CROP_PAD))
+
+
+def test_weight_average_blends_floats_and_copies_counters():
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location("train_vp_cnn", Path(__file__).resolve().parent.parent / "scripts/train_vp_cnn.py")
+    train_vp_cnn = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(train_vp_cnn)
+    torch.manual_seed(0)
+    model, ema = vp_cnn.VPNet(width=8), vp_cnn.VPNet(width=8)
+    before = {k: v.clone() for k, v in ema.state_dict().items()}
+    model(torch.rand(4, 3, 64, 64))  # train-mode forward: moves batch-norm statistics and counters
+    train_vp_cnn.update_ema(ema, model, 0.75)
+    for k, v in ema.state_dict().items():
+        m = model.state_dict()[k]
+        expected = 0.75 * before[k] + 0.25 * m if v.dtype.is_floating_point else m
+        assert torch.allclose(v, expected, atol=1e-6), k

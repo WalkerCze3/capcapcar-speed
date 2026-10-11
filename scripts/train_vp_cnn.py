@@ -26,6 +26,7 @@ from the calibration file (--vp1-label calib takes both from the calibration).
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import shutil
 import sys
@@ -182,6 +183,16 @@ def augment(context: np.ndarray, labels: np.ndarray, box_hw: np.ndarray, rng: np
 
 
 @torch.no_grad()
+def update_ema(ema: torch.nn.Module, model: torch.nn.Module, decay: float) -> None:
+    """ema <- decay * ema + (1 - decay) * model, batch-norm statistics included; integer buffers copied."""
+    for e, m in zip(ema.state_dict().values(), model.state_dict().values()):
+        if e.dtype.is_floating_point:
+            e.lerp_(m, 1.0 - decay)
+        else:
+            e.copy_(m)
+
+
+@torch.no_grad()
 def evaluate(model, recs: dict[str, dict], device) -> dict:
     model.eval()
     out = {}
@@ -227,6 +238,9 @@ def main() -> None:
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--lr", type=float, default=None, help=f"Default per arch: {DEFAULT_LR}")
     p.add_argument("--width", type=int, default=32, help="Channels of the small arch")
+    p.add_argument("--clip", type=float, default=1.0, help="Gradient norm clip (0: off)")
+    p.add_argument("--ema-decay", type=float, default=0.998,
+                   help="Validate and save an exponential moving average of the weights (0: the raw weights)")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--device", default=None)
     p.add_argument("--out", required=True)
@@ -260,32 +274,49 @@ def main() -> None:
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs)
     print(f"[train] {args.arch} ({'random init' if args.no_pretrained or args.arch == 'small' else 'ImageNet init'}), "
           f"lr {lr:g}, {args.epochs} epochs on {device}", flush=True)
+    # A first ResNet-18 run on sessions 0-2 jumped from loss 0.002 to 0.07 within two epochs and its
+    # session-3 score swung between 4 and 28 deg from one epoch to the next: clip the gradient, and
+    # validate (and keep) a moving average of the weights instead of the last step's.
+    ema = copy.deepcopy(model).eval() if args.ema_decay > 0 else None
+    step = 0
     best, history = float("inf"), []
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
         model.train()
         order = rng.permutation(len(X))
-        losses = []
+        losses, grad_norms = [], []
         for i in range(0, len(order), args.batch_size):
             idx = np.sort(order[i:i + args.batch_size])
             x, y = augment(X[idx], Y[idx], B[idx], rng, geometric=not args.no_geometric_aug)
             loss = direction_loss(model(x.to(device)), y.to(device))
             opt.zero_grad()
             loss.backward()
+            grad_norms.append(float(torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip or float("inf"))))
             opt.step()
             losses.append(loss.item())
+            step += 1
+            if ema is not None:
+                update_ema(ema, model, min(args.ema_decay, (1 + step) / (10 + step)))
         sched.step()
-        metrics = evaluate(model, val, device)
+        kept = ema if ema is not None else model
+        metrics = evaluate(kept, val, device)
         score = float(np.mean([m["agg_vp1_deg"] + m["agg_vp2_deg"] for m in metrics.values()]))
-        history.append({"epoch": epoch, "train_loss": float(np.mean(losses)), "val": metrics, "score": score})
-        print(f"[epoch {epoch}] {time.time() - t0:.0f} s, loss {np.mean(losses):.4f}  val aggregate VP1+VP2 {score:.3f} deg  "
+        entry = {"epoch": epoch, "train_loss": float(np.mean(losses)), "grad_norm_median": float(np.median(grad_norms)),
+                 "grad_norm_max": float(np.max(grad_norms)), "val": metrics, "score": score}
+        if ema is not None:  # the raw weights too, to see what the average buys
+            raw = evaluate(model, val, device)
+            entry.update(val_raw=raw, score_raw=float(np.mean([m["agg_vp1_deg"] + m["agg_vp2_deg"] for m in raw.values()])))
+        history.append(entry)
+        print(f"[epoch {epoch}] {time.time() - t0:.0f} s, loss {np.mean(losses):.4f}, grad norm "
+              f"{entry['grad_norm_median']:.3f} (max {entry['grad_norm_max']:.2f})  val aggregate VP1+VP2 {score:.3f} deg"
+              + (f" (raw weights {entry['score_raw']:.3f})" if ema is not None else "") + "  "
               + "  ".join(f"{n}: crop {m['crop_vp1_deg']:.1f}/{m['crop_vp2_deg']:.1f} "
                           f"agg {m['agg_vp1_deg']:.2f}/{m['agg_vp2_deg']:.2f}" for n, m in metrics.items()), flush=True)
         if score < best:
             best = score
-            torch.save({"model": model.state_dict(), "arch": args.arch, "width": args.width, "crop_size": CROP_SIZE,
-                        "crop_pad": CROP_PAD, "epoch": epoch, "val": metrics, "score": score, "train": args.train},
-                       out / "best.pt")
+            torch.save({"model": kept.state_dict(), "arch": args.arch, "width": args.width,
+                        "crop_size": CROP_SIZE, "crop_pad": CROP_PAD, "epoch": epoch, "val": metrics, "score": score,
+                        "train": args.train, "ema_decay": args.ema_decay}, out / "best.pt")
         (out / "history.json").write_text(json.dumps(history, indent=2))
     print(f"[done] best val aggregate {best:.3f} deg; checkpoint {out / 'best.pt'}", flush=True)
 
