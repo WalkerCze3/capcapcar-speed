@@ -53,7 +53,8 @@ def detect_and_track(video_path: str | Path, weights: str = "yolo11n.pt", tracke
     One row per (frame, track_id): frame, track_id, cls, conf, xmin, ymin, xmax, ymax (pixels).
 
     frame_step > 1 reads every frame_step-th video frame (e.g. 2 turns 50 fps into 25 fps). `frame` and
-    max_frames then count processed frames, so video frame = frame * frame_step.
+    max_frames then count processed frames; Ultralytics keeps the last of every frame_step decoded frames,
+    so processed frame k is decoded frame k * frame_step + frame_step - 1 (vp_cnn.decoded_frame).
     """
     from ultralytics import YOLO
 
@@ -290,14 +291,37 @@ def render_video(video_path: str | Path, out_path: str | Path, lifted: pd.DataFr
 
 # ---------------------------------------------------------------------- CLI
 
+def auto_projections(video_path, vp_model: str, dets: pd.DataFrame, img_size: tuple[int, int], out_dir: Path,
+                     device: str | None = None) -> dict[int, np.ndarray]:
+    """Calibrate from the tracked traffic itself (speed_lstm.autocalib); saves out_dir/auto_calib.json."""
+    from speed_lstm import autocalib
+    from speed_lstm.vp_cnn import VPPredictor, extract_crops, sample_crop_boxes
+
+    boxes = sample_crop_boxes(dets, img_size)
+    crops, geoms, _ = extract_crops(video_path, boxes)
+    vp1s, vp2s = VPPredictor(vp_model, device).predict_vps(crops, geoms)
+    cal = autocalib.calibrate(dets, img_size, vp1_candidates=vp1s, vp2_candidates=vp2s)
+    cal.save(out_dir / "auto_calib.json")
+    q = cal.quality
+    print(f"[calib] automatic: focal {cal.focal:.0f} px, camera height {q['camera_height_m']:.2f} m, "
+          f"VP1 from {q['vp1_source']}, {len(crops)} crops -> {out_dir / 'auto_calib.json'}")
+    if not cal.reliable:
+        print("[calib] warning: calibration failed its quality checks (see quality in auto_calib.json); "
+              "speeds from it may be off by a constant factor")
+    return {1: cal.P, -1: cal.P}
+
+
 def main() -> None:
     from speed_lstm.model import Predictor
 
     p = argparse.ArgumentParser(description="Video -> 3D boxes -> speed with a v2 checkpoint.")
     p.add_argument("--video", required=True)
     p.add_argument("--checkpoint", required=True, help="best.pt saved by speed_lstm.train")
-    p.add_argument("--calib", required=True,
-                   help='I-24 hg.json (with --camera) or a single-camera json {"P": 3x4}')
+    p.add_argument("--calib", default=None,
+                   help='I-24 hg.json (with --camera) or a single-camera json {"P": 3x4}. '
+                        'Leave out to calibrate automatically from the traffic (needs --vp-model)')
+    p.add_argument("--vp-model", default=None,
+                   help="Vanishing-point CNN checkpoint (scripts/train_vp_cnn.py) for automatic calibration")
     p.add_argument("--camera", default=None, help="Camera name inside hg.json / timestamp csv, e.g. p1c1")
     p.add_argument("--calib-units", choices=["ft", "m"], default="ft",
                    help="World units P expects (I-24 hg.json uses feet)")
@@ -323,11 +347,15 @@ def main() -> None:
     out_dir = Path(args.out_dir or Path("runs/video") / Path(args.video).stem)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    if args.calib is None and args.vp_model is None:
+        p.error("pass --calib, or --vp-model to calibrate automatically")
     predictor = Predictor(args.checkpoint)
-    projections = load_projections(args.calib, args.camera, args.calib_units, args.calib_image_scale)
     direction = None if args.direction == "auto" else {"EB": 1, "WB": -1}[args.direction]
-    if direction is not None and direction not in projections:
-        raise ValueError(f"No {args.direction} projection for this camera in {args.calib}")
+    projections = None
+    if args.calib is not None:
+        projections = load_projections(args.calib, args.camera, args.calib_units, args.calib_image_scale)
+        if direction is not None and direction not in projections:
+            raise ValueError(f"No {args.direction} projection for this camera in {args.calib}")
 
     fps, n_frames, img_w, img_h = video_info(args.video)
     print(f"[video] {args.video}: {n_frames} frames @ {fps:.2f} fps, {img_w}x{img_h}")
@@ -345,6 +373,9 @@ def main() -> None:
         dets = detect_and_track(args.video, args.weights, args.tracker, args.conf, args.device, args.max_frames)
     dets.to_csv(out_dir / "detections.csv", index=False)
     print(f"[track] {len(dets)} detections, {dets['track_id'].nunique()} tracks")
+
+    if projections is None:
+        projections = auto_projections(args.video, args.vp_model, dets, (img_w, img_h), out_dir, args.device)
 
     n_ts = int(dets["frame"].max()) + 1 if len(dets) else 0
     timestamps = frame_timestamps(np.arange(n_ts), fps, args.ts_csv, args.camera, args.frame_offset)

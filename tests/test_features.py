@@ -106,3 +106,33 @@ def test_one_step_rate_matches_hand_calculation():
     rate_x = f3d[:, 7]  # one-step rate of raw col 0 (center_x)
     expected = (center3d[1:, 0] - center3d[:-1, 0]) / (t[1:] - t[:-1])
     assert np.allclose(rate_x, expected)
+
+
+def test_feature_names_3d_match_the_computed_columns():
+    rng = np.random.default_rng(1)
+    t = np.arange(16) * 0.04
+    center3d = np.column_stack([np.arange(16) * 0.8, np.full(16, 3.0), np.full(16, 0.75)])
+    dims3d = np.tile([4.5, 1.8, 1.5], (16, 1)) + rng.normal(0, 0.01, (16, 3))
+    f = fv2.compute_features_3d(center3d, dims3d, t)
+    col = fv2.FEATURE_NAMES_3D.index
+    np.testing.assert_allclose(f[:, col("x")], center3d[1:, 0])
+    np.testing.assert_allclose(f[:, col("height")], dims3d[1:, 2], rtol=1e-6)
+    np.testing.assert_allclose(f[:, col("vel1_x")], 20.0, rtol=1e-5)
+    np.testing.assert_allclose(f[9:, col("vel10_x")], 20.0, rtol=1e-5)
+    np.testing.assert_allclose(f[:, col("rel_x")], center3d[1:, 0], atol=1e-6)
+    np.testing.assert_allclose(f[:, col("dt")], 0.04, rtol=1e-6)
+    assert f[0, col("mask_lag3")] == 0 and f[2, col("mask_lag3")] == 1
+    assert np.all(f[:, col("vel1_z")] == 0) and np.all(f[:, col("rate_z")] == 0)
+
+
+def test_mask_presets_resolve_to_3d_columns():
+    assert fv2.mask_indices("3d", "abs_xy") == [0, 1]
+    const = fv2.mask_indices("3d", "abs_xy_const")
+    assert len(const) == 17 and {0, 1, 2}.issubset(const)
+    assert fv2.FEATURE_NAMES_3D.index("vel1_x") not in const
+    assert fv2.mask_indices("3d", ["dt"]) == [40]
+    import pytest
+    with pytest.raises(ValueError):
+        fv2.mask_indices("2d", "abs_xy")
+    with pytest.raises(ValueError):
+        fv2.mask_indices("3d", ["nope"])

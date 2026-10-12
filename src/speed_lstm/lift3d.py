@@ -152,17 +152,21 @@ def _bbox_residual(center: np.ndarray, dims: np.ndarray, bbox: np.ndarray, P: np
     return (proj.astype(np.float64) - bbox) / px_sigma
 
 
-def fit_cuboid(bbox, P: np.ndarray, cls: str = "car", fixed_dims=None, init_xy=None) -> CuboidFit | None:
+def fit_cuboid(bbox, P: np.ndarray, cls: str = "car", fixed_dims=None, init_xy=None,
+               prior_sigma_scale: float = 1.0) -> CuboidFit | None:
     """
     Fit a road-aligned cuboid whose projected box matches `bbox` (xyxy pixels).
 
     fixed_dims: if given, only the ground position (x, y) is solved.
     init_xy: warm start (e.g. previous frame's solution); defaults to the
              back-projected bottom-center of the box.
+    prior_sigma_scale: widens (> 1) the dimension prior, so the fitted size
+             follows the box more closely (autocalib's scale search uses it).
     Returns None if the box can't be placed on the road plane (above horizon).
     """
     bbox = np.asarray(bbox, dtype=np.float64)
     prior_dims, prior_sigma = (np.asarray(a, dtype=np.float64) for a in DIM_PRIORS.get(cls, DIM_PRIORS["car"]))
+    prior_sigma = prior_sigma * prior_sigma_scale
     # Pixel noise scales with apparent size so near and far vehicles are weighted alike.
     px_sigma = max(1.0, 0.02 * float(np.hypot(bbox[2] - bbox[0], bbox[3] - bbox[1])))
 
