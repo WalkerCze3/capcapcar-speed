@@ -195,3 +195,46 @@ def compute_features(mode: str, box2d: np.ndarray | None, center3d: np.ndarray, 
 
 def n_features(mode: str) -> int:
     return {"2d": N_FEATURES_2D, "3d": N_FEATURES_3D, "combined": N_FEATURES_COMBINED}[mode]
+
+
+_AXES = ("x", "y", "z")
+_DIMS = ("length", "width", "height")
+
+# Column names of compute_features_3d, in its output order.
+FEATURE_NAMES_3D = [
+    *_AXES, *_DIMS, "volume",
+    *(f"rate_{n}" for n in (*_AXES, *_DIMS, "volume")),
+    *(f"lograte_{n}" for n in _DIMS),
+    *(f"rel_{a}" for a in _AXES),
+    *(f"vel{lag}_{a}" for lag in LAGS for a in _AXES),
+    *(f"mask_lag{lag}" for lag in LAGS),
+    *(f"acc_{a}" for a in _AXES),
+    "acc_mask",
+    "dt",
+]
+assert len(FEATURE_NAMES_3D) == N_FEATURES_3D
+
+# Named groups of 3D columns for ablations (see finetune's mask_features).
+#   abs_xy: absolute road-frame position, which can let a model tell cameras apart.
+#   abs_xy_const: abs_xy plus the columns video lifting leaves constant within a track
+#     (flat road, so z and its rates, and dims fixed to the track median, so the size rates).
+MASK_PRESETS_3D = {
+    "abs_xy": ["x", "y"],
+    "abs_xy_const": [
+        "x", "y",
+        "z", "rate_z", "rel_z", *(f"vel{lag}_z" for lag in LAGS), "acc_z",
+        "rate_length", "rate_width", "rate_height", "rate_volume",
+        "lograte_length", "lograte_width", "lograte_height",
+    ],
+}
+
+
+def mask_indices(mode: str, spec: str | list[str]) -> list[int]:
+    """Column indices for a MASK_PRESETS_3D name or a list of FEATURE_NAMES_3D names (3D models only)."""
+    if mode != "3d":
+        raise ValueError(f"feature masks are only defined for 3d models, not {mode!r}")
+    names = MASK_PRESETS_3D[spec] if isinstance(spec, str) else list(spec)
+    unknown = [n for n in names if n not in FEATURE_NAMES_3D]
+    if unknown:
+        raise ValueError(f"unknown 3d feature name(s): {unknown}")
+    return sorted(FEATURE_NAMES_3D.index(n) for n in names)

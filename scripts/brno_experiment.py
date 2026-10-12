@@ -117,7 +117,7 @@ def main() -> None:
         "geometry_mae": result["test_geometry_median"].get("mae"), "hybrid_mae": result["test_hybrid"].get("mae"),
         "val_mae": result.get("val_best", {}).get("mae"), "best_epoch": result.get("val_best", {}).get("epoch"),
         "train_recordings": len(result.get("train_recordings", [])), "train_windows": result.get("n_train_windows"),
-        **{f"ft_{k}": fcfg.get(k) for k in ("epochs", "lr", "weight_decay", "freeze", "renorm", "loss", "scratch", "target", "seed")},
+        **{f"ft_{k}": fcfg.get(k) for k in ("epochs", "lr", "weight_decay", "freeze", "renorm", "loss", "scratch", "target", "seed", "mask_features")},
     }])
     if board.exists():  # merge so rows written before a new column was added stay aligned
         row = pd.concat([pd.read_csv(board), row], ignore_index=True)

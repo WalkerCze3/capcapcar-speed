@@ -80,6 +80,7 @@ class Predictor:
 
         self.feature_mean = np.asarray(ckpt["feature_mean"], dtype=np.float64)
         self.feature_std = np.asarray(ckpt["feature_std"], dtype=np.float64)
+        self.feature_mask = list(ckpt.get("feature_mask") or [])  # columns zeroed after normalization
         self.target_mean = float(ckpt["target_mean"])
         self.target_std = float(ckpt["target_std"])
 
@@ -109,6 +110,8 @@ class Predictor:
 
         feats = fv2.compute_features(self.mode, box2d, center3d, dims3d, t)  # (n_observations-1, F)
         feats = (feats - self.feature_mean) / self.feature_std
+        if self.feature_mask:
+            feats[:, self.feature_mask] = 0.0
 
         x = torch.from_numpy(feats.astype(np.float32)).unsqueeze(0).to(self.device)  # (1, T, F)
         with torch.no_grad():

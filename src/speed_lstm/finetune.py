@@ -21,6 +21,11 @@ Options:
            the car's official geometric speed, window["base_speed"], added by
            attach_base_speed; the last layer starts at zero, so epoch 0 is the
            geometry alone and model selection can fall back to it)
+  mask_features: none | a features_v2.MASK_PRESETS_3D name | a list of
+           FEATURE_NAMES_3D names; those columns are set to 0 (the
+           checkpoint's mean) after normalization, in training and whenever
+           the saved checkpoint predicts (an input ablation that keeps the
+           pretrained weights usable)
 """
 
 from __future__ import annotations
@@ -79,13 +84,23 @@ def model_from_checkpoint(ckpt: dict, device) -> SpeedLSTM:
     return model
 
 
+def normalize_features(ckpt: dict, feats: np.ndarray) -> np.ndarray:
+    """Standardize with ckpt's feature mean/std and zero its masked columns, if any."""
+    x = (feats - ckpt["feature_mean"]) / ckpt["feature_std"]
+    mask = ckpt.get("feature_mask")
+    if mask:
+        x = x.copy()
+        x[..., mask] = 0.0
+    return x
+
+
 def predict_batch(model: nn.Module, ckpt: dict, feats: np.ndarray, device, batch_size: int = 1024) -> np.ndarray:
     """
     feats: (N, 15, F) raw features -> (N,) m/s, using ckpt's normalization: the speed,
     or for a residual checkpoint the correction to add to the geometric speed.
     """
     model.eval()
-    x = (feats - ckpt["feature_mean"]) / ckpt["feature_std"]
+    x = normalize_features(ckpt, feats)
     out = []
     with torch.no_grad():
         for i in range(0, len(x), batch_size):
@@ -123,12 +138,15 @@ def group_split(windows: list[dict], val_frac: float, seed: int) -> tuple[list[d
 def finetune(init_checkpoint: str | Path, train_windows: list[dict], val_windows: list[dict], out_dir: str | Path,
              epochs: int = 30, lr: float = 3e-4, weight_decay: float = 0.01, batch_size: int = 256,
              freeze: str = "none", renorm: str = "keep", loss: str = "mse", scratch: bool = False,
-             target: str = "speed", seed: int = 0, log=print) -> dict:
+             target: str = "speed", seed: int = 0, mask_features: str | list[str] | None = None,
+             log=print) -> dict:
     torch.manual_seed(seed)
     np.random.seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt = copy.deepcopy(load_checkpoint(init_checkpoint))
     mode = ckpt["mode"]
+    if mask_features:
+        ckpt["feature_mask"] = fv2.mask_indices(mode, mask_features)
 
     Xtr = np.stack([window_features(w, mode) for w in train_windows]).astype(np.float64)
     ytr = np.array([w["target_speed"] for w in train_windows], dtype=np.float64)
@@ -167,7 +185,7 @@ def finetune(init_checkpoint: str | Path, train_windows: list[dict], val_windows
     opt = torch.optim.AdamW(params, lr=lr, weight_decay=weight_decay)
     crit = nn.HuberLoss(delta=1.0) if loss == "huber" else nn.MSELoss()
 
-    xtr_t = torch.from_numpy(((Xtr - ckpt["feature_mean"]) / ckpt["feature_std"]).astype(np.float32))
+    xtr_t = torch.from_numpy(normalize_features(ckpt, Xtr).astype(np.float32))
     ytr_t = torch.from_numpy(((ytr - btr - ckpt["target_mean"]) / ckpt["target_std"]).astype(np.float32))
 
     def val_score():
@@ -177,7 +195,7 @@ def finetune(init_checkpoint: str | Path, train_windows: list[dict], val_windows
     best = {"epoch": 0, **val_score()}
     log(f"[finetune] {len(train_windows)} train windows ({len({w['group'] for w in train_windows})} cars), "
         f"{len(val_windows)} val windows ({len(set(gva))} cars); mode {mode}, freeze {freeze}, renorm {renorm}, "
-        f"loss {loss}, lr {lr}, scratch {scratch}, target {target}")
+        f"loss {loss}, lr {lr}, scratch {scratch}, target {target}, mask {mask_features or 'none'}")
     log(f"[finetune] epoch   0 | val car MAE {best.get('mae', float('nan')):.2f} km/h, bias {best.get('bias', float('nan')):+.2f}")
     best_state = copy.deepcopy(model.state_dict())
     history = [best]
@@ -210,7 +228,8 @@ def finetune(init_checkpoint: str | Path, train_windows: list[dict], val_windows
     ckpt["model_state"] = best_state
     ckpt["finetuned_from"] = str(init_checkpoint)
     ckpt["finetune"] = {"epochs": epochs, "lr": lr, "freeze": freeze, "renorm": renorm, "loss": loss,
-                        "scratch": scratch, "target": target, "seed": seed, "best_epoch": best["epoch"]}
+                        "scratch": scratch, "target": target, "seed": seed, "mask_features": mask_features,
+                        "best_epoch": best["epoch"]}
     torch.save(ckpt, out_dir / "best.pt")
     (out_dir / "finetune_history.json").write_text(json.dumps(history, indent=2))
     log(f"[finetune] best epoch {best['epoch']}: val car MAE {best['mae']:.2f} km/h -> {out_dir / 'best.pt'}")

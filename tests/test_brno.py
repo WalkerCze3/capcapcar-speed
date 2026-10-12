@@ -180,3 +180,39 @@ def test_reground_puts_bbox_bottom_center_on_the_road():
     mid = slice(2, -2)                                                 # the moving average shortens at the ends
     assert np.allclose(out["cx"].to_numpy()[mid], xs[mid], atol=1e-6) and np.allclose(out["cy"], 1.0, atol=1e-6)
     assert np.allclose(out["timestamp"], np.arange(12) * 2 / 50.0)
+
+
+def test_masked_finetune_ignores_masked_columns(tmp_path):
+    import torch
+    from speed_lstm import features_v2 as fv2
+    from speed_lstm.finetune import finetune, group_split, load_checkpoint, model_from_checkpoint, predict_batch
+    from speed_lstm.model import Predictor, SpeedLSTM
+    n = fv2.n_features("3d")
+    m = SpeedLSTM(input_size=n)
+    torch.save({"model_state": m.state_dict(), "mode": "3d", "input_size": n, "hidden_size": m.hidden_size,
+                "n_observations": 16, "max_timestamp_gap": 0.2, "feature_mean": np.zeros(n), "feature_std": np.ones(n),
+                "target_mean": 20.0, "target_std": 5.0}, tmp_path / "init.pt")
+    rng = np.random.default_rng(0)
+    windows = []
+    for car in range(12):
+        v = rng.uniform(15, 35)
+        t = np.arange(16) * 0.04
+        b3 = np.column_stack([v * t, np.zeros(16), np.full(16, 0.75), np.full((16, 3), [4.5, 1.8, 1.5])])
+        windows.append({"timestamps": t.tolist(), "boxes3d": b3.tolist(), "boxes2d": None,
+                        "target_speed": v, "group": f"c{car}"})
+    train, val = group_split(windows, 0.25, 0)
+    res = finetune(tmp_path / "init.pt", train, val, tmp_path / "out", epochs=2, lr=3e-3,
+                   mask_features="abs_xy", log=lambda *_: None)
+    ckpt = load_checkpoint(res["checkpoint"])
+    assert ckpt["feature_mask"] == [0, 1] and ckpt["finetune"]["mask_features"] == "abs_xy"
+
+    # Shifting the masked absolute x/y changes nothing, in batch scoring and in the Predictor.
+    b3 = np.asarray(windows[0]["boxes3d"])
+    moved = b3.copy()
+    moved[:, :2] += [500.0, -40.0]
+    t = np.asarray(windows[0]["timestamps"])
+    feats = np.stack([fv2.compute_features_3d(x[:, :3], x[:, 3:], t) for x in (b3, moved)]).astype(np.float64)
+    a, b = predict_batch(model_from_checkpoint(ckpt, "cpu"), ckpt, feats, "cpu")
+    assert abs(a - b) < 1e-5
+    p = Predictor(res["checkpoint"], device="cpu")
+    assert abs(p.predict(t, boxes3d=b3) - p.predict(t, boxes3d=moved)) < 1e-5
