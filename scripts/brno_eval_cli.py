@@ -63,6 +63,9 @@ def main() -> None:
     p.add_argument("--smooth", type=int, default=5)
     p.add_argument("--stride", type=int, default=4, help="Processed frames between window starts")
     p.add_argument("--detections", default=None, help="Reuse detections.csv from an earlier run (same frame step)")
+    p.add_argument("--boxes3d", default=None,
+                   help="Use these 3D boxes (boxes3d.csv columns) instead of lifting the detections with lift3d, "
+                        "e.g. boxes from another 3D detector matched to the same tracks")
     p.add_argument("--no-half", action="store_true", help="Run YOLO in fp32 (fp16 is the default on CUDA)")
     p.add_argument("--no-mask", action="store_true", help="Don't drop detections outside video_mask.png")
     p.add_argument("--video", default=None, help="Read this copy of the recording's video.avi (e.g. on local disk)")
@@ -115,9 +118,14 @@ def main() -> None:
 
     n_samples = int(dets["frame"].max()) + 1 if len(dets) else 0
     timestamps = np.arange(n_samples) * step / fps
-    lifted = lift_tracks(dets, timestamps, {1: P, -1: P}, (img_w, img_h), smooth_window=args.smooth)
+    if args.boxes3d:
+        lifted = pd.read_csv(args.boxes3d)
+        lifted = lifted[lifted["frame"] < n_samples]
+        print(f"[boxes3d] {len(lifted)} 3D boxes from {args.boxes3d}, {lifted['track_id'].nunique()} tracks")
+    else:
+        lifted = lift_tracks(dets, timestamps, {1: P, -1: P}, (img_w, img_h), smooth_window=args.smooth)
+        print(f"[lift] {len(lifted)} 3D boxes, median reprojection error {lifted['residual_px'].median():.2f} px")
     lifted.to_csv(out_dir / "boxes3d.csv", index=False)
-    print(f"[lift] {len(lifted)} 3D boxes, median reprojection error {lifted['residual_px'].median():.2f} px")
 
     predictor = Predictor(args.checkpoint)
     windows = build_video_windows(lifted, predictor.n_observations, args.stride, predictor.max_timestamp_gap)
