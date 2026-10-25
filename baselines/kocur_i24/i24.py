@@ -35,6 +35,13 @@ def load_camera(hg_path: str | Path, camera: str, video_width: int) -> dict:
     s = video_width / CALIB_WIDTH
     S = np.diag([s, s, 1.0])
     P = {d: S @ np.asarray(hg[k][camera]["P"], dtype=np.float64) for d, k in SIDES.items() if camera in hg[k]}
+    # Some cameras (e.g. scene1 p2c6, p3c5) store P with the opposite overall sign, so visible
+    # points get w < 0; flip those so a road point the camera sees projects with w > 0.
+    for d, k in SIDES.items():
+        if d in P and hg[k][camera].get("space_pts"):
+            x, y = hg[k][camera]["space_pts"][0][:2]
+            if (P[d] @ np.array([x, y, 0.0, 1.0]))[2] < 0:
+                P[d] = -P[d]
     vps = np.asarray(hg["EB"][camera]["vps"], dtype=np.float64) * s
     up = {d: float(np.sign(camera_center(p)[2])) for d, p in P.items()}  # camera is above the road
     return {"P": P, "vps": vps, "scale": s, "up": up}
